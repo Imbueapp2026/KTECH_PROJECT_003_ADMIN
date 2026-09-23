@@ -1,5 +1,5 @@
 /**
- * GET /api/admin/products/missing-data - Returns products with missing gold pricing data
+ * GET /api/admin/products/missing-data - Returns metal-priced products with missing pricing data
  * This is used to show alerts on the dashboard about products that need attention
  */
 import { requireAdmin } from "@/lib/firebase-admin";
@@ -14,11 +14,13 @@ export async function GET(req: Request) {
 
     const supabase = getServiceClient();
 
-    // Query for products with missing required gold pricing fields
+    // Direct-priced products do not need metal weight or making-charge fields.
+    // Only automatically calculated metal-priced products need validation here.
     const { data, error } = await supabase
       .from("products")
-      .select("id, name, purity_carats, weight_grams, making_charge_type, making_charge_percent, making_charge_flat")
+      .select("id, name, price_auto_calculated, material_type, purity_carats, weight_grams, making_charge_type, making_charge_percent, making_charge_flat")
       .or("purity_carats.is.null,weight_grams.is.null,weight_grams.lte.0,making_charge_type.is.null")
+      .eq("price_auto_calculated", true)
       .in("status", ["draft", "published"]); // Only active products
 
     if (error) {
@@ -33,7 +35,7 @@ export async function GET(req: Request) {
     const productsWithMissingFields = (data || []).map((product: Record<string, unknown>) => {
       const missingFields: string[] = [];
 
-      if (!product.purity_carats) {
+      if (product.material_type === "gold" && !product.purity_carats) {
         missingFields.push("purity_carats");
       }
 
