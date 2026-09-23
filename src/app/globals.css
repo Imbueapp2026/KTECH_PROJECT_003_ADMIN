@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Avirat Admin — design tokens.
+ * Per avirat-jewelers-admin-design-tokens.md (DRAFT). Hex values are placeholders
+ * pending brand confirmation. Grey does the heavy lifting here (chrome, borders,
+ * disabled); gold signals primary action; dusky pink marks active/selected. */
+:root {
+  --color-primary: #ffffff;
+  --color-secondary: #d8a8a0;
+  --color-secondary-soft: #f3e2df;
+  --color-tertiary: #8a8783;
+  --color-tertiary-soft: #e8e5e2;
+  --color-quaternary: #b08d57;
+  --color-quaternary-soft: #efe4d2;
+  --color-ink: #1a1816;
+  --color-ink-soft: #4a4744;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f7f4f2;
+  --color-surface-sunken: #efeae6;
+  --color-success: #5b7a5e;
+  --color-success-soft: #e1ebe2;
+  --color-warning: #c4922f;
+  --color-warning-soft: #f6ecd4;
+  --color-error: #9c4a42;
+  --color-error-soft: #f3dcd8;
+  --color-overlay: rgba(26, 24, 22, 0.6);
+
+  --font-display: var(--font-display), ui-monospace, monospace;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --shadow-card: 0 1px 2px rgba(26, 24, 22, 0.06), 0 1px 1px rgba(26, 24, 22, 0.04);
+  --shadow-modal: 0 4px 16px rgba(26, 24, 22, 0.12);
+}
+
+@layer base {
+  html,
+  body {
+    font-family: var(--font-body);
+    color: var(--color-ink);
+    background: var(--color-surface-muted);
+  }
+  /* Crisp typography defaults — admin doesn't need editorial weight. */
+  body {
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+}
+
+/* Visible keyboard focus ring — applied via className="focus-ring". */
+@layer components {
+  .focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--color-quaternary);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+  }
+
+/* Section heading divider used at the top of major page areas. */
+  .section-divider {
+    border-bottom: 1px solid var(--color-tertiary-soft);
+  }
+
+/* Subtle hairline used between rows / list items. */
+  .hairline {
+    border-color: var(--color-tertiary-soft);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

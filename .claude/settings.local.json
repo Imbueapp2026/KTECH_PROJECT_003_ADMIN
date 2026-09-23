@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path C:\\\\Projects\\\\KTech\\\\AVIRAT\\\\KTECH_PROJECT_003\\\\apps\\\\admin -Recurse -Depth 3 -File | Where-Object { $_.Extension -in '.ts','.tsx','.js','.jsx' -and $_.FullName -notmatch 'node_modules' -and $_.FullName -notmatch '.next' } | Select-Object -First 100 FullName)",
+      "PowerShell(npm install *)",
+      "mcp__plugin_supabase_supabase__execute_sql"
+    ]
+  }
+}

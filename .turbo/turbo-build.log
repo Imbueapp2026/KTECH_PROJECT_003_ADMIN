@@ -1,0 +1,75 @@
+
+> admin@0.1.0 build
+> next build
+
+⚠ `images.domains` is deprecated in favor of `images.remotePatterns`. Please update next.config.ts to protect your application from malicious users.
+▲ Next.js 16.2.12 (Turbopack)
+- Environments: .env.local
+- Experiments (use with caution):
+  · optimizePackageImports
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.6s
+  Running TypeScript ...
+  Finished TypeScript in 2.3s ...
+  Collecting page data using 9 workers ...
+  Generating static pages using 9 workers (0/37) ...
+  Generating static pages using 9 workers (9/37) 
+  Generating static pages using 9 workers (18/37) 
+  Generating static pages using 9 workers (27/37) 
+✓ Generating static pages using 9 workers (37/37) in 127ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /admin/banners
+├ ○ /analytics
+├ ƒ /api/admin/analytics
+├ ƒ /api/admin/banners
+├ ƒ /api/admin/categories
+├ ƒ /api/admin/categories/[id]
+├ ƒ /api/admin/discounts
+├ ƒ /api/admin/discounts/[id]
+├ ƒ /api/admin/festivals
+├ ƒ /api/admin/festivals/[id]
+├ ƒ /api/admin/festivals/[id]/products
+├ ƒ /api/admin/gold-price
+├ ƒ /api/admin/gold-price/fetch-external
+├ ƒ /api/admin/gold-price/recalculate-prices
+├ ƒ /api/admin/inquiries
+├ ƒ /api/admin/inquiries/[id]
+├ ƒ /api/admin/offers
+├ ƒ /api/admin/offers/[id]
+├ ƒ /api/admin/products
+├ ƒ /api/admin/products/[id]
+├ ƒ /api/admin/products/missing-data
+├ ƒ /api/admin/products/upload
+├ ƒ /api/admin/silver-price
+├ ƒ /api/admin/silver-price/fetch-external
+├ ƒ /api/admin/silver-price/recalculate-prices
+├ ƒ /api/admin/upload
+├ ƒ /api/geoip
+├ ƒ /api/health
+├ ○ /categories
+├ ƒ /categories/[id]
+├ ○ /categories/new
+├ ○ /festivals
+├ ƒ /festivals/[id]
+├ ƒ /festivals/[id]/edit
+├ ○ /festivals/new
+├ ○ /forgot-password
+├ ○ /inquiries
+├ ○ /login
+├ ○ /offers
+├ ○ /offers/new
+├ ○ /products
+├ ƒ /products/[id]
+├ ƒ /products/[id]/edit
+├ ○ /products/new
+└ ○ /robots.txt
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
