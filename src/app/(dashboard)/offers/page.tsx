@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { ProductGrid, ProductGridSkeleton } from "@/components/products/ProductGrid";
+import { ProductGrid } from "@/components/products/ProductGrid";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import type {
@@ -16,7 +16,6 @@ import type {
 } from "@/lib/data/types";
 
 type BannerDraft = {
-  product_id: string;
   image_url: string;
   alt_text: string;
   is_active: boolean;
@@ -104,7 +103,7 @@ export default function OffersPage() {
     }
   }
 
-  async function uploadBannerImage(offerId: string, file: File) {
+  async function uploadBannerImage(_offerId: string, file: File) {
     const formData = new FormData();
     formData.append("files", file);
     const token = await (await import("@/lib/auth/get-token")).getIdToken().catch(() => null);
@@ -115,9 +114,7 @@ export default function OffersPage() {
     });
     const result = await response.json();
     if (!response.ok || !result.urls?.[0]) throw new Error(result.error ?? "Banner image upload failed.");
-    setOffers((current) => current?.map((offer) => offer.id === offerId
-      ? { ...offer, offer_banners: [{ ...(offer.offer_banners?.[0] ?? {}), image_url: result.urls[0] } as never] }
-      : offer) ?? null);
+    return result.urls[0] as string;
   }
 
   async function saveBanner(offer: OfferWithDiscounts, draft: BannerDraft) {
@@ -245,8 +242,8 @@ export default function OffersPage() {
               </p>
             )}
             <OfferBannerEditor
+              key={`${o.id}-${o.offer_banners?.[0]?.id ?? "empty"}`}
               offer={o}
-              products={inOffer}
               onUpload={uploadBannerImage}
               onSave={saveBanner}
               onDelete={deleteBanner}
@@ -281,20 +278,17 @@ export default function OffersPage() {
 
 function OfferBannerEditor({
   offer,
-  products,
   onUpload,
   onSave,
   onDelete,
 }: {
   offer: OfferWithDiscounts;
-  products: ProductJoined[];
-  onUpload: (offerId: string, file: File) => Promise<void>;
+  onUpload: (offerId: string, file: File) => Promise<string>;
   onSave: (offer: OfferWithDiscounts, draft: BannerDraft) => Promise<void>;
   onDelete: (offerId: string) => Promise<void>;
 }) {
   const banner = offer.offer_banners?.[0];
   const [draft, setDraft] = useState<BannerDraft>({
-    product_id: banner?.product_id ?? products[0]?.id ?? "",
     image_url: banner?.image_url ?? "",
     alt_text: banner?.alt_text ?? `${offer.label} offer`,
     is_active: banner?.is_active ?? true,
@@ -302,22 +296,12 @@ function OfferBannerEditor({
   });
   const [uploading, setUploading] = useState(false);
 
-  useEffect(() => {
-    setDraft({
-      product_id: banner?.product_id ?? products[0]?.id ?? "",
-      image_url: banner?.image_url ?? "",
-      alt_text: banner?.alt_text ?? `${offer.label} offer`,
-      is_active: banner?.is_active ?? true,
-      display_order: banner?.display_order ?? 0,
-    });
-  }, [banner?.id, banner?.image_url, banner?.product_id, banner?.alt_text, banner?.is_active, banner?.display_order, offer.label, products]);
-
   async function handleFile(file: File | undefined) {
     if (!file) return;
     setUploading(true);
     try {
-      await onUpload(offer.id, file);
-      setDraft((current) => ({ ...current, image_url: "pending" }));
+      const imageUrl = await onUpload(offer.id, file);
+      setDraft((current) => ({ ...current, image_url: imageUrl }));
     } finally {
       setUploading(false);
     }
@@ -334,7 +318,7 @@ function OfferBannerEditor({
             Promote this offer
           </h3>
           <p className="mt-1 text-xs text-[var(--color-tertiary)]">
-            Visitors will be sent to the selected product when they tap the banner.
+            Visitors will see every product included in this offer when they tap the banner.
           </p>
         </div>
         {banner && (
@@ -365,24 +349,6 @@ function OfferBannerEditor({
         </div>
 
         <div className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[11px] uppercase tracking-[0.06em] font-semibold text-[var(--color-ink-soft)]">
-              Product destination
-            </span>
-            <select
-              value={draft.product_id}
-              onChange={(e) => setDraft({ ...draft, product_id: e.target.value })}
-              className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-tertiary-soft)] bg-[var(--color-primary)] px-3 text-sm text-[var(--color-ink)] focus:border-[var(--color-quaternary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-quaternary)]/20"
-            >
-              <option value="">Select an offer product</option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] uppercase tracking-[0.06em] font-semibold text-[var(--color-ink-soft)]">
               Alt text
@@ -419,7 +385,7 @@ function OfferBannerEditor({
 
           <Button
             className="w-full"
-            disabled={!draft.product_id || !draft.image_url || draft.image_url === "pending" || !draft.alt_text || uploading}
+            disabled={!draft.image_url || draft.image_url === "pending" || !draft.alt_text || uploading}
             onClick={() => void onSave(offer, draft)}
           >
             Save banner
