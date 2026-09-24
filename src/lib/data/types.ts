@@ -34,6 +34,18 @@ export interface Offer {
   created_at: string;
 }
 
+export interface OfferBanner {
+  id: string;
+  offer_id: string;
+  product_id: string;
+  image_url: string;
+  alt_text: string;
+  is_active: boolean;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Discount {
   id: string;
   offer_id: string;
@@ -104,7 +116,7 @@ export interface InquiryWithProduct extends Inquiry {
 }
 
 /** Shared types for API responses with joined data */
-export type OfferWithDiscounts = Offer & { discounts: Discount[] };
+export type OfferWithDiscounts = Offer & { discounts: Discount[]; offer_banners: OfferBanner[] };
 
 export type ProductJoined = Product & {
   category: Category | null;

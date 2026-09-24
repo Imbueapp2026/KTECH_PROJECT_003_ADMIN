@@ -22,7 +22,7 @@ export async function GET(req: Request) {
   const { data, error, count } = await supabase
     .from("offers")
     .select(
-      "id, label, description, is_active, start_date, end_date, created_at, discounts(id, discount_type, value)",
+      "id, label, description, is_active, start_date, end_date, created_at, discounts(id, discount_type, value), offer_banners(id, product_id, image_url, alt_text, is_active, display_order)",
       { count: "exact" },
     )
     .order("created_at", { ascending: false })

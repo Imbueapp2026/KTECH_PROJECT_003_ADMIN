@@ -25,7 +25,17 @@ const tabs = [
   { href: "/festivals", label: "Festivals", Icon: FestivalIcon },
 ] as const;
 
-export function Sidebar() {
+export function Sidebar({
+  collapsed = false,
+  mobileOpen = false,
+  onMobileClose,
+  onToggle,
+}: {
+  collapsed?: boolean;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
+  onToggle?: () => void;
+}) {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
   const [newCount, setNewCount] = useState<number | null>(null);
@@ -60,9 +70,19 @@ export function Sidebar() {
   }, []);
 
   return (
-    <aside className="w-full md:w-64 md:min-h-screen bg-[var(--color-primary)] border-r border-[var(--color-tertiary-soft)] flex md:flex-col shadow-[1px_0_0_rgba(26,24,22,0.04)]">
-      <div className="px-6 pt-6 pb-5 hidden md:block border-b border-[var(--color-tertiary-soft)]">
-        <div className="flex items-center gap-2">
+    <>
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation menu"
+          onClick={onMobileClose}
+          className="fixed inset-0 z-40 bg-black/25 md:hidden"
+        />
+      )}
+    <aside className={`fixed inset-y-0 left-0 z-50 flex w-72 -translate-x-full flex-col bg-[var(--color-primary)] shadow-xl transition-transform duration-200 ease-out md:relative md:inset-auto md:z-auto md:min-h-screen md:translate-x-0 md:shadow-[1px_0_0_rgba(26,24,22,0.04)] md:transition-[width] ${mobileOpen ? "translate-x-0" : ""} ${collapsed ? "md:w-16" : "md:w-64"}`}>
+      <div className={`hidden md:flex border-b border-[var(--color-tertiary-soft)] ${collapsed ? "items-center justify-center px-2 py-4" : "items-center justify-between px-6 pt-6 pb-5"}`}>
+        {!collapsed && (
+          <div className="flex items-center gap-2">
           <span
             aria-hidden
             className="inline-block w-2.5 h-2.5 rounded-full bg-[var(--color-quaternary)]"
@@ -70,9 +90,23 @@ export function Sidebar() {
           <p className="font-[family-name:var(--font-display)] text-sm font-semibold uppercase tracking-[0.08em] text-[var(--color-ink)]">
             Avirat Admin
           </p>
-        </div>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-tertiary)] transition-colors hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-ink)] focus-ring"
+        >
+          <span className="flex w-4 flex-col gap-1" aria-hidden="true">
+            <span className="h-px w-full bg-current" />
+            <span className="h-px w-full bg-current" />
+            <span className="h-px w-full bg-current" />
+          </span>
+        </button>
       </div>
-      <nav className="flex md:flex-col w-full overflow-x-auto md:overflow-visible px-2 py-2 gap-1">
+      <nav className={`flex w-full flex-col overflow-y-auto py-2 gap-1 md:overflow-visible ${collapsed ? "px-1.5" : "px-2"}`}>
         {tabs.map(({ href, label, Icon }) => {
           const active = pathname?.startsWith(href) ?? false;
           const showBadge = href === "/inquiries" && newCount && newCount > 0;
@@ -81,7 +115,8 @@ export function Sidebar() {
               key={href}
               href={href}
               aria-current={active ? "page" : undefined}
-              className={`group relative flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-[var(--radius-md)] border border-transparent transition-colors duration-150 ease-[cubic-bezier(0.4,0,0.2,1)] focus-ring ${
+              title={collapsed ? label : undefined}
+              className={`group relative flex items-center gap-3 py-2.5 text-sm font-medium rounded-[var(--radius-md)] border border-transparent transition-colors duration-150 ease-[cubic-bezier(0.4,0,0.2,1)] focus-ring ${collapsed ? "justify-center px-1.5" : "px-3"} ${
                 active
                   ? "bg-[var(--color-secondary-soft)] text-[var(--color-ink)] border-[var(--color-secondary)]/30"
                   : "text-[var(--color-ink-soft)] hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-ink)]"
@@ -96,17 +131,18 @@ export function Sidebar() {
               >
                 <Icon />
               </span>
-              <span className="truncate">{label}</span>
+              {!collapsed && <span className="truncate">{label}</span>}
               {showBadge && (
                 <Badge tone="new" className="ml-auto">
-                  {newCount}
+                  {!collapsed && newCount}
                 </Badge>
               )}
             </Link>
           );
         })}
       </nav>
-      <div className="hidden md:block mt-auto p-5 border-t border-[var(--color-tertiary-soft)] bg-[var(--color-surface-muted)]/40">
+      <div className={`hidden md:block mt-auto border-t border-[var(--color-tertiary-soft)] bg-[var(--color-surface-muted)]/40 ${collapsed ? "p-2" : "p-5"}`}>
+        {!collapsed && <>
         <p className="text-xs font-medium text-[var(--color-ink)] truncate">
           {user?.displayName || user?.email || "Not signed in"}
         </p>
@@ -134,7 +170,9 @@ export function Sidebar() {
           }}
           onCancel={() => setConfirmLogout(false)}
         />
+        </>}
       </div>
     </aside>
+    </>
   );
 }
