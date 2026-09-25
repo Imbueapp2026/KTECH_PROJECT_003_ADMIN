@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Badge } from "@/components/ui/Badge";
@@ -35,6 +36,7 @@ export default function OffersPage() {
   const [products, setProducts] = useState<ProductJoined[] | null>(null);
   const [activeFestival, setActiveFestival] = useState<Festival | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deletingOfferId, setDeletingOfferId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,7 +105,7 @@ export default function OffersPage() {
     }
   }
 
-  async function uploadBannerImage(_offerId: string, file: File) {
+  async function uploadBannerImage(offerId: string, file: File) {
     const formData = new FormData();
     formData.append("files", file);
     const token = await (await import("@/lib/auth/get-token")).getIdToken().catch(() => null);
@@ -114,7 +116,9 @@ export default function OffersPage() {
     });
     const result = await response.json();
     if (!response.ok || !result.urls?.[0]) throw new Error(result.error ?? "Banner image upload failed.");
-    return result.urls[0] as string;
+    setOffers((current) => current?.map((offer) => offer.id === offerId
+      ? { ...offer, offer_banners: [{ ...(offer.offer_banners?.[0] ?? {}), image_url: result.urls[0] } as never] }
+      : offer) ?? null);
   }
 
   async function saveBanner(offer: OfferWithDiscounts, draft: BannerDraft) {
@@ -134,6 +138,23 @@ export default function OffersPage() {
       push("Offer banner removed.", "success");
     } catch (err) {
       push(err instanceof ApiError ? err.message : "Failed to remove offer banner.", "danger");
+    }
+  }
+
+  async function deleteOffer(offer: OfferWithDiscounts) {
+    if (!window.confirm(`Remove ${offer.label}? Its products will remain available without this offer.`)) return;
+    setDeletingOfferId(offer.id);
+    try {
+      await api.delete(`/api/admin/offers/${offer.id}`);
+      setOffers((current) => current?.filter((item) => item.id !== offer.id) ?? null);
+      setProducts((current) => current?.map((product) => product.offer_id === offer.id
+        ? { ...product, offer_id: null, offer: null }
+        : product) ?? null);
+      push("Offer removed.", "success");
+    } catch (err) {
+      push(err instanceof ApiError ? err.message : "Failed to remove offer.", "danger");
+    } finally {
+      setDeletingOfferId(null);
     }
   }
 
@@ -234,6 +255,14 @@ export default function OffersPage() {
                     Add All to Festival
                   </Button>
                 )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={deletingOfferId === o.id}
+                  onClick={() => void deleteOffer(o)}
+                >
+                  {deletingOfferId === o.id ? "Removing..." : "Remove offer"}
+                </Button>
               </div>
             </header>
             {o.description && (
@@ -242,7 +271,7 @@ export default function OffersPage() {
               </p>
             )}
             <OfferBannerEditor
-              key={`${o.id}-${o.offer_banners?.[0]?.id ?? "empty"}`}
+              key={`${o.id}-${o.offer_banners?.[0]?.id ?? 'nobanner'}-${o.offer_banners?.[0]?.image_url ?? ''}`}
               offer={o}
               onUpload={uploadBannerImage}
               onSave={saveBanner}
@@ -283,7 +312,7 @@ function OfferBannerEditor({
   onDelete,
 }: {
   offer: OfferWithDiscounts;
-  onUpload: (offerId: string, file: File) => Promise<string>;
+  onUpload: (offerId: string, file: File) => Promise<void>;
   onSave: (offer: OfferWithDiscounts, draft: BannerDraft) => Promise<void>;
   onDelete: (offerId: string) => Promise<void>;
 }) {
@@ -300,8 +329,8 @@ function OfferBannerEditor({
     if (!file) return;
     setUploading(true);
     try {
-      const imageUrl = await onUpload(offer.id, file);
-      setDraft((current) => ({ ...current, image_url: imageUrl }));
+      await onUpload(offer.id, file);
+      setDraft((current) => ({ ...current, image_url: "pending" }));
     } finally {
       setUploading(false);
     }
@@ -318,7 +347,7 @@ function OfferBannerEditor({
             Promote this offer
           </h3>
           <p className="mt-1 text-xs text-[var(--color-tertiary)]">
-            Visitors will see every product included in this offer when they tap the banner.
+            Visitors will be sent to the selected product when they tap the banner.
           </p>
         </div>
         {banner && (
@@ -331,10 +360,13 @@ function OfferBannerEditor({
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:items-start">
         <div className="relative aspect-[16/7] min-h-[150px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-tertiary-soft)] bg-[var(--color-surface-sunken)]">
           {draft.image_url && draft.image_url !== "pending" ? (
-            <img
+            <Image
               src={draft.image_url}
               alt="Current offer banner preview"
-              className="h-full w-full object-fill"
+              fill
+              unoptimized
+              sizes="(max-width: 1024px) 100vw, 50vw"
+              className="object-cover"
             />
           ) : (
             <div className="flex h-full items-center justify-center px-6 text-center text-xs text-[var(--color-tertiary)]">

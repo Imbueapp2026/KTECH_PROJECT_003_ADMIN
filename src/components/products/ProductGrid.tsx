@@ -21,9 +21,11 @@ export type ProductCardData = Product & {
 export function ProductCard({
   product,
   href,
+  onDelete,
 }: {
   product: ProductCardData;
   href: string;
+  onDelete?: (product: ProductCardData) => void;
 }) {
   const discounted = resolveDiscounted(product.price, product.offer ?? null);
   const onSale = discounted != null;
@@ -59,6 +61,20 @@ export function ProductCard({
           <div className="absolute top-2 right-2">
             <Badge tone="neutral">Archived</Badge>
           </div>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            aria-label={`Remove ${product.name}`}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onDelete(product);
+            }}
+            className="absolute bottom-2 right-2 rounded-[var(--radius-sm)] bg-black/65 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-white opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+          >
+            Remove
+          </button>
         )}
       </div>
       <div className="p-4 flex flex-col gap-2">
@@ -128,12 +144,14 @@ export function ProductGridSkeleton({ count = 8 }: { count?: number }) {
 export function ProductGrid({
   products,
   hrefBase,
+  onDelete,
   emptyTitle,
   emptyDescription,
   emptyAction,
 }: {
   products: ProductCardData[];
   hrefBase: (id: string) => string;
+  onDelete?: (product: ProductCardData) => void;
   emptyTitle: string;
   emptyDescription?: string;
   emptyAction?: React.ReactNode;
@@ -150,7 +168,7 @@ export function ProductGrid({
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
       {products.map((p) => (
-        <ProductCard key={p.id} product={p} href={hrefBase(p.id)} />
+        <ProductCard key={p.id} product={p} href={hrefBase(p.id)} onDelete={onDelete} />
       ))}
     </div>
   );

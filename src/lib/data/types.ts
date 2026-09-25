@@ -37,6 +37,7 @@ export interface Offer {
 export interface OfferBanner {
   id: string;
   offer_id: string;
+  product_id: string | null;
   image_url: string;
   alt_text: string;
   is_active: boolean;

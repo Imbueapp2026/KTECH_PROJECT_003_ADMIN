@@ -101,22 +101,20 @@ export async function DELETE(
   if (!asUuid(id)) return badRequest("invalid id");
 
   const supabase = getServiceClient();
-  // Check for products referencing this category; refuse if any are non-archived.
-  const { count, error: countErr } = await supabase
+  const { data: category, error: categoryError } = await supabase
+    .from("categories")
+    .select("id")
+    .eq("id", id)
+    .maybeSingle();
+  if (categoryError) return serverError(categoryError);
+  if (!category) return notFound();
+
+  const { error: detachError } = await supabase
     .from("products")
-    .select("id", { count: "exact", head: true })
-    .eq("category_id", id)
-    .neq("status", "archived");
-  if (countErr) return serverError(countErr);
-  if ((count ?? 0) > 0) {
-    return Response.json(
-      {
-        error: "conflict",
-        message: `Cannot delete: ${count} non-archived product(s) reference this category.`,
-      },
-      { status: 409 },
-    );
-  }
+    .update({ category_id: null })
+    .eq("category_id", id);
+  if (detachError) return serverError(detachError);
+
   const { error } = await supabase.from("categories").delete().eq("id", id);
   if (error) return serverError(error);
   return Response.json({ ok: true });

@@ -15,6 +15,7 @@ export default function ProductsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [availabilityFilter, setAvailabilityFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const pageSize = 12;
 
   useEffect(() => {
@@ -79,6 +80,20 @@ export default function ProductsPage() {
   const totalPages = products ? Math.max(1, Math.ceil(products.length / pageSize)) : 1;
   const currentPage = Math.min(page, totalPages);
   const pagedProducts = products ? products.slice((currentPage - 1) * pageSize, currentPage * pageSize) : [];
+
+  async function handleDelete(product: ProductJoined) {
+    if (!window.confirm(`Remove ${product.name}? It will no longer appear on the public site.`)) return;
+    setDeletingId(product.id);
+    setError(null);
+    try {
+      await api.delete(`/api/admin/products/${product.id}`);
+      setAllProducts((current) => current?.filter((item) => item.id !== product.id) ?? null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to remove product.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   const published = allProducts?.filter((p) => p.status === "published").length ?? 0;
   const draft = allProducts?.filter((p) => p.status === "draft").length ?? 0;
@@ -230,6 +245,9 @@ export default function ProductsPage() {
           <ProductGrid
             products={pagedProducts}
             hrefBase={(id) => `/products/${id}`}
+            onDelete={(product) => {
+              if (deletingId !== product.id) void handleDelete(product as ProductJoined);
+            }}
             emptyTitle="No products found"
             emptyDescription="Try adjusting your search or filters."
           />

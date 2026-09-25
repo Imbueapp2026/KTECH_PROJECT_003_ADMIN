@@ -9,6 +9,7 @@ import type { Category } from "@/lib/data/types";
 export default function CategoriesPage() {
   const [items, setItems] = useState<Category[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -27,6 +28,20 @@ export default function CategoriesPage() {
       cancelled = true;
     };
   }, []);
+
+  async function handleDelete(category: Category) {
+    if (!window.confirm(`Remove ${category.name}? Products will remain available without this category.`)) return;
+    setDeletingId(category.id);
+    setError(null);
+    try {
+      await api.delete(`/api/admin/categories/${category.id}`);
+      setItems((current) => current?.filter((item) => item.id !== category.id) ?? null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to remove category.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div className="p-5 md:p-8 max-w-6xl flex flex-col gap-6">
@@ -80,6 +95,19 @@ export default function CategoriesPage() {
                       {c.name.charAt(0).toUpperCase()}
                     </span>
                   </span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${c.name}`}
+                    disabled={deletingId === c.id}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void handleDelete(c);
+                    }}
+                    className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--color-error)] opacity-0 transition-opacity group-hover:opacity-100 disabled:opacity-50"
+                  >
+                    {deletingId === c.id ? "Removing" : "Remove"}
+                  </button>
                 </div>
                 <p className="text-sm font-semibold text-[var(--color-ink)] truncate">
                   {c.name}
