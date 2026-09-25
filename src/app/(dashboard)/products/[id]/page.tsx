@@ -67,10 +67,10 @@ export default function ProductDetailPage() {
     setArchiving(true);
     try {
       await api.delete(`/api/admin/products/${product.id}`);
-      push("Product archived.", "success");
+      push("Product deleted.", "success");
       router.replace("/products");
     } catch (err) {
-      push(err instanceof ApiError ? err.message : "Could not archive product.", "danger");
+      push(err instanceof ApiError ? err.message : "Could not delete product.", "danger");
     } finally {
       setArchiving(false);
       setConfirmOpen(false);

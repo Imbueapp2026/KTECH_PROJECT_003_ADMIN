@@ -334,17 +334,22 @@ export async function DELETE(
   const { id } = await params;
   if (!asUuid(id)) return badRequest("invalid id");
 
-  // Soft delete — preserve inquiry history.
   const supabase = getServiceClient();
+  const { error: bannerError } = await supabase
+    .from("offer_banners")
+    .delete()
+    .eq("product_id", id);
+  if (bannerError) return serverError(bannerError);
+
   const { data, error } = await supabase
     .from("products")
-    .update({ status: "archived", updated_at: new Date().toISOString() })
+    .delete()
     .eq("id", id)
-    .select("id, status")
+    .select("id")
     .single();
   if (error) {
     if (error.code === "PGRST116") return notFound();
     return serverError(error);
   }
-  return Response.json({ data });
+  return Response.json({ data, deleted: true });
 }
