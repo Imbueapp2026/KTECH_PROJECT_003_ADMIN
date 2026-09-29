@@ -365,7 +365,7 @@ export default function NewProductPage() {
                 </label>
                 <input
                   type="number"
-                  step="0.01"
+                  step="0.001"
                   min="0"
                   value={formData.weight_grams}
                   onChange={(e) => setFormData({ ...formData, weight_grams: e.target.value })}
@@ -381,7 +381,7 @@ export default function NewProductPage() {
                 </label>
                 <input
                   type="number"
-                  step="0.01"
+                  step="0.001"
                   min="0"
                   value={formData.net_weight_grams}
                   onChange={(e) => setFormData({ ...formData, net_weight_grams: e.target.value })}
@@ -416,7 +416,7 @@ export default function NewProductPage() {
                 </label>
                 <input
                   type="number"
-                  step="0.01"
+                  step="0.001"
                   min="0"
                   value={formData.net_weight_grams}
                   onChange={(e) => setFormData({ ...formData, net_weight_grams: e.target.value })}

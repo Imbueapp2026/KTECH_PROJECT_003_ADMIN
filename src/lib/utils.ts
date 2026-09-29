@@ -9,6 +9,12 @@ export function formatPrice(n: number): string {
   }).format(n);
 }
 
+export function formatWeight(n: number | null | undefined): string {
+  if (n == null) return "—";
+  // Always show 3 decimal places to preserve precision
+  return n.toFixed(3);
+}
+
 export function resolveDiscounted(
   price: number,
   offer: (Offer & { discount: Discount[] | Discount | null }) | null,
