@@ -269,11 +269,11 @@ export default function ProductDetailPage() {
               <dt className="text-[var(--color-tertiary)]">Purity</dt>
               <dd className="font-medium">{product.purity_carats ? `${product.purity_carats}K` : "—"}</dd>
               <dt className="text-[var(--color-tertiary)]">{product.net_weight_grams ? "Gross Weight" : "Weight"}</dt>
-              <dd className="font-medium">{product.weight_grams ? `${product.weight_grams.toFixed(1)}g` : "—"}</dd>
+              <dd className="font-medium">{product.weight_grams ? `${product.weight_grams}g` : "—"}</dd>
               {product.net_weight_grams && (
                 <>
                   <dt className="text-[var(--color-tertiary)]">Net Weight</dt>
-                  <dd className="font-medium">{`${product.net_weight_grams.toFixed(1)}g`}</dd>
+                  <dd className="font-medium">{`${product.net_weight_grams}g`}</dd>
                 </>
               )}
               <dt className="text-[var(--color-tertiary)]">Making Charge</dt>
