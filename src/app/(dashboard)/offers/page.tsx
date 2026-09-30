@@ -38,6 +38,7 @@ export default function OffersPage() {
   const [activeFestival, setActiveFestival] = useState<Festival | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deletingOfferId, setDeletingOfferId] = useState<string | null>(null);
+  const [bulkActionOfferId, setBulkActionOfferId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,6 +81,55 @@ export default function OffersPage() {
       cancelled = true;
     };
   }, []);
+
+  async function applyOfferToAllProducts(offer: OfferWithDiscounts) {
+    if (!window.confirm(`Apply "${offer.label}" to ALL products? This will override any existing offer on those products.`)) return;
+    setBulkActionOfferId(offer.id);
+    try {
+      const res = await api.post<{ ok: boolean; updated: number }>(`/api/admin/offers/${offer.id}/apply-all`, {});
+      push(`Offer applied to ${res.updated} products.`, "success");
+      // refresh product list
+      const [prod, cat] = await Promise.all([
+        api.get<{ data: Product[] }>("/api/admin/products"),
+        api.get<{ data: Category[] }>("/api/admin/categories"),
+      ]);
+      const offerById = new Map(
+        (offers ?? []).map((o) => [o.id, { ...o, discount: o.discounts?.[0] ?? null }]),
+      );
+      const catById = new Map(prod.data.map ? prod.data.map((p: Product) => [p.category_id, null]) : []);
+      void catById; // just refresh products list
+      const catMap = new Map(cat.data.map((c: Category) => [c.id, c]));
+      setProducts(
+        prod.data
+          .filter((p: Product) => p.offer_id)
+          .map((row: Product) => ({
+            ...row,
+            category: catMap.get(row.category_id) ?? null,
+            offer: offerById.get(row.offer_id!) ?? null,
+          }))
+      );
+    } catch (err) {
+      push(err instanceof ApiError ? err.message : "Failed to apply offer to all products.", "danger");
+    } finally {
+      setBulkActionOfferId(null);
+    }
+  }
+
+  async function removeOfferFromAllProducts(offer: OfferWithDiscounts) {
+    if (!window.confirm(`Remove "${offer.label}" from ALL products it is currently applied to?`)) return;
+    setBulkActionOfferId(offer.id);
+    try {
+      const res = await api.delete<{ ok: boolean; updated: number }>(`/api/admin/offers/${offer.id}/apply-all`);
+      push(`Offer removed from ${res.updated} products.`, "success");
+      setProducts((current) =>
+        current?.map((p) => p.offer_id === offer.id ? { ...p, offer_id: null, offer: null } : p) ?? null
+      );
+    } catch (err) {
+      push(err instanceof ApiError ? err.message : "Failed to remove offer from all products.", "danger");
+    } finally {
+      setBulkActionOfferId(null);
+    }
+  }
 
   async function addAllOfferProductsToFestival(offerId: string) {
     if (!activeFestival) {
@@ -254,10 +304,26 @@ export default function OffersPage() {
                 </Badge>
                 <Badge tone="gold">{formatDiscount(d)}</Badge>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs text-[var(--color-tertiary)]">
                   {inOffer.length} {inOffer.length === 1 ? "product" : "products"}
                 </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={bulkActionOfferId === o.id}
+                  onClick={() => void applyOfferToAllProducts(o)}
+                >
+                  {bulkActionOfferId === o.id ? "Applying..." : "Apply to All Products"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={bulkActionOfferId === o.id || inOffer.length === 0}
+                  onClick={() => void removeOfferFromAllProducts(o)}
+                >
+                  {bulkActionOfferId === o.id ? "Removing..." : "Remove from All"}
+                </Button>
                 {activeFestival && o.is_active && (
                   <Button
                     size="sm"

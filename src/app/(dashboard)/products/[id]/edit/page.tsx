@@ -96,7 +96,7 @@ export default function ProductEditPage({ params }: { params: Promise<{ id: stri
     const selectedOffer = offers.find(o => o.id === formData.offer_id);
     const offerDiscount = selectedOffer?.discounts?.[0];
     if (offerDiscount?.discount_type === 'making_charge') {
-      currentMakingCharge = parseFloat(offerDiscount.value) || 0;
+      currentMakingCharge = offerDiscount.value || 0;
       currentMakingChargeType = 'percent';
     }
 
@@ -123,7 +123,7 @@ export default function ProductEditPage({ params }: { params: Promise<{ id: stri
         const [prodRes, catRes, offerRes, goldRes, silverRes] = await Promise.all([
           api.get<{ data?: Detail } & Detail>(`/api/admin/products/${id}`),
           api.get<{ data?: Category[] } & Category[]>("/api/admin/categories"),
-          api.get<{ data?: Offer[] } & Offer[]>("/api/admin/offers"),
+          api.get<{ data?: OfferWithDiscounts[] } & OfferWithDiscounts[]>("/api/admin/offers"),
           api.get<{ price_per_gram: number | null }>("/api/admin/gold-price").catch(() => ({ price_per_gram: null })),
           api.get<{ price_per_gram: number | null }>("/api/admin/silver-price").catch(() => ({ price_per_gram: null })),
         ]);
