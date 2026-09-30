@@ -3,10 +3,13 @@
  * This is called automatically when gold price is updated
  * Now handles products with missing data gracefully and returns skipped products
  */
+import { requireAdmin } from "@/lib/firebase-admin";
 import { getServiceClient } from "@/lib/supabase";
+import { unauthorized } from "@/lib/http";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
+  if (!(await requireAdmin(req))) return unauthorized();
   try {
     const body = await req.json();
     const { gold_price_per_gram } = body;
@@ -24,10 +27,10 @@ export async function POST(req: Request) {
     const { data: silverData } = await supabase
       .from('silver_prices')
       .select('price_per_gram')
-      .eq('is_current', true)
+      // Do NOT filter by is_current — that column is never set during inserts.
       .order('updated_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
       
     const silverPrice = silverData?.price_per_gram || 0;
     

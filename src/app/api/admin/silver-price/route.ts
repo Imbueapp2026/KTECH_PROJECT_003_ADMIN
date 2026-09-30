@@ -2,7 +2,9 @@
  * GET /api/admin/silver-price - Get current silver price
  * POST /api/admin/silver-price - Set current silver price (manual override)
  */
+import { requireAdmin } from "@/lib/firebase-admin";
 import { getServiceClient } from "@/lib/supabase";
+import { unauthorized } from "@/lib/http";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -19,9 +21,9 @@ export async function GET() {
     
     if (error || !data) {
       console.log("No silver price found in database, using fallback");
-      // Return a fallback price instead of null to prevent "silver price unavailable" error
+      // Return a realistic fallback silver price (₹90/g, not the gold rate!)
       return NextResponse.json({
-        price_per_gram: 6500,
+        price_per_gram: 90,
         updated_at: new Date().toISOString(),
         source: 'fallback'
       }, { 
@@ -39,7 +41,7 @@ export async function GET() {
   } catch (error) {
     console.log("silver price API error, using fallback:", error);
     return NextResponse.json({
-      price_per_gram: 6500,
+      price_per_gram: 90,
       updated_at: new Date().toISOString(),
       source: 'fallback'
     }, { 
@@ -49,6 +51,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (!(await requireAdmin(req))) return unauthorized();
   try {
     const body = await req.json();
     const price_per_gram = body.price_per_gram;
@@ -119,7 +122,8 @@ export async function POST(req: Request) {
       const { data: goldData } = await supabase
         .from('gold_prices')
         .select('price_per_gram')
-        .eq('is_current', true)
+        // Do NOT filter by is_current — that column is never set during inserts.
+        // Always fetch the most recently inserted row by updated_at.
         .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle();

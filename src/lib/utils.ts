@@ -22,7 +22,7 @@ export function resolveDiscounted(
   if (!offer || !offer.is_active) return null;
   const d = Array.isArray(offer.discount) ? offer.discount[0] : offer.discount;
   if (!d) return null;
-  if (d.discount_type === "percentage") {
+  if (d.discount_type === "percentage" || (d.discount_type as string) === "percent") {
     return price * (1 - d.value / 100);
   }
   return Math.max(0, price - d.value);

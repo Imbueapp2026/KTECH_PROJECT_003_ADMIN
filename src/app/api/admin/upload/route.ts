@@ -4,12 +4,14 @@
  * Returns the public URL of the uploaded file.
  */
 import { getServiceClient } from "@/lib/supabase";
-import { badRequest, serverError } from "@/lib/http";
+import { badRequest, serverError, unauthorized } from "@/lib/http";
+import { requireAdmin } from "@/lib/firebase-admin";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 export async function POST(req: Request) {
+  if (!(await requireAdmin(req))) return unauthorized();
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;

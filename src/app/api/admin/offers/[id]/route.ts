@@ -92,6 +92,13 @@ export async function DELETE(
       .eq("offer_id", id);
     if (clearErr) return serverError(clearErr);
 
+    // Delete offer_banners before discounts (FK constraint)
+    const { error: bannerErr } = await supabase
+      .from("offer_banners")
+      .delete()
+      .eq("offer_id", id);
+    if (bannerErr) return serverError(bannerErr);
+
     const { error: disErr } = await supabase
       .from("discounts")
       .delete()

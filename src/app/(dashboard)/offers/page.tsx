@@ -25,7 +25,7 @@ type BannerDraft = {
 
 function formatDiscount(d: Discount | undefined): string {
   if (!d) return "—";
-  return d.discount_type === "percentage"
+  return (d.discount_type === "percentage" || (d.discount_type as string) === "percent")
     ? `${d.value}% off`
     : `₹${d.value} off`;
 }
@@ -50,11 +50,11 @@ export default function OffersPage() {
         ]);
         if (cancelled) return;
         setOffers(off.data);
-        
+
         // Get active festival
         const activeFest = fest.data?.find(f => f.is_active);
         setActiveFestival(activeFest || null);
-        
+
         const catById = new Map(cat.data.map((c) => [c.id, c]));
         const offerById = new Map(
           off.data.map((o) => [o.id, { ...o, discount: o.discounts?.[0] ?? null }]),
@@ -85,40 +85,50 @@ export default function OffersPage() {
       push("No active festival to add products to.", "danger");
       return;
     }
-    
-    const offerProducts = products?.filter(p => p.offer_id === offerId) || [];
-    
+
+    // Only add products that are not already in this festival
+    const offerProducts = products?.filter(p => p.offer_id === offerId && p.festival_id !== activeFestival.id) || [];
+
     if (offerProducts.length === 0) {
-      push("No products to add.", "danger");
+      push("No products to add, or they are all already in the festival.", "default");
       return;
     }
-    
+
     try {
-      // Add all products in sequence
-      for (const product of offerProducts) {
-        await api.post(`/api/admin/festivals/${activeFestival.id}/products`, { product_id: product.id });
-      }
+      // Parallelize product additions
+      await Promise.all(offerProducts.map(product => 
+        api.post(`/api/admin/festivals/${activeFestival.id}/products`, { product_id: product.id })
+      ));
+      
       push(`Added ${offerProducts.length} products to festival.`, "success");
-      window.location.reload();
+      
+      // Update local state without a full page reload
+      setProducts(current => current?.map(p => 
+        p.offer_id === offerId ? { ...p, festival_id: activeFestival.id } : p
+      ) ?? null);
     } catch (err) {
       push(err instanceof ApiError ? err.message : "Failed to add products to festival.", "danger");
     }
   }
 
-  async function uploadBannerImage(offerId: string, file: File) {
-    const formData = new FormData();
-    formData.append("files", file);
-    const token = await (await import("@/lib/auth/get-token")).getIdToken().catch(() => null);
-    const response = await fetch("/api/admin/products/upload", {
-      method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      body: formData,
-    });
-    const result = await response.json();
-    if (!response.ok || !result.urls?.[0]) throw new Error(result.error ?? "Banner image upload failed.");
-    setOffers((current) => current?.map((offer) => offer.id === offerId
-      ? { ...offer, offer_banners: [{ ...(offer.offer_banners?.[0] ?? {}), image_url: result.urls[0] } as never] }
-      : offer) ?? null);
+  async function uploadBannerImage(offerId: string, file: File): Promise<string> {
+    try {
+      const formData = new FormData();
+      formData.append("files", file);
+      const token = await (await import("@/lib/auth/get-token")).getIdToken().catch(() => null);
+      const response = await fetch("/api/admin/products/upload", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: formData,
+      });
+      const result = await response.json();
+      if (!response.ok || !result.urls?.[0]) throw new Error(result.error ?? "Banner image upload failed.");
+      
+      return result.urls[0];
+    } catch (err: unknown) {
+      push(err instanceof Error ? err.message : "Failed to upload banner.", "danger");
+      throw err;
+    }
   }
 
   async function saveBanner(offer: OfferWithDiscounts, draft: BannerDraft) {
@@ -271,7 +281,7 @@ export default function OffersPage() {
               </p>
             )}
             <OfferBannerEditor
-              key={`${o.id}-${o.offer_banners?.[0]?.id ?? 'nobanner'}-${o.offer_banners?.[0]?.image_url ?? ''}`}
+              key={`${o.id}-${o.offer_banners?.[0]?.id ?? 'nobanner'}`}
               offer={o}
               onUpload={uploadBannerImage}
               onSave={saveBanner}
@@ -312,7 +322,7 @@ function OfferBannerEditor({
   onDelete,
 }: {
   offer: OfferWithDiscounts;
-  onUpload: (offerId: string, file: File) => Promise<void>;
+  onUpload: (offerId: string, file: File) => Promise<string>;
   onSave: (offer: OfferWithDiscounts, draft: BannerDraft) => Promise<void>;
   onDelete: (offerId: string) => Promise<void>;
 }) {
@@ -329,8 +339,10 @@ function OfferBannerEditor({
     if (!file) return;
     setUploading(true);
     try {
-      await onUpload(offer.id, file);
-      setDraft((current) => ({ ...current, image_url: "pending" }));
+      const url = await onUpload(offer.id, file);
+      setDraft((current) => ({ ...current, image_url: url }));
+    } catch {
+      // Upload error is handled by the parent
     } finally {
       setUploading(false);
     }

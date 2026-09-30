@@ -2,7 +2,9 @@
  * GET /api/admin/gold-price - Get current gold price
  * POST /api/admin/gold-price - Set current gold price (manual override)
  */
+import { requireAdmin } from "@/lib/firebase-admin";
 import { getServiceClient } from "@/lib/supabase";
+import { unauthorized } from "@/lib/http";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -49,6 +51,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (!(await requireAdmin(req))) return unauthorized();
   try {
     const body = await req.json();
     const price_per_gram = body.price_per_gram;

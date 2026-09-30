@@ -18,11 +18,13 @@ import type { Inquiry } from "@/lib/data/types";
 
 const tabs = [
   { href: "/", label: "Dashboard", Icon: DashboardIcon },
+  { href: "/analytics", label: "Analytics", Icon: DashboardIcon },
   { href: "/products", label: "Products", Icon: ProductsIcon },
   { href: "/inquiries", label: "Inquiry", Icon: InquiryIcon },
   { href: "/categories", label: "Categories", Icon: CategoriesIcon },
   { href: "/offers", label: "Offers and Discount", Icon: OffersIcon },
   { href: "/festivals", label: "Festivals", Icon: FestivalIcon },
+  { href: "/admin/banners", label: "Banners", Icon: OffersIcon },
 ] as const;
 
 export function Sidebar({

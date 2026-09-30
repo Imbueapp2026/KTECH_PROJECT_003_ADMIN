@@ -3,7 +3,9 @@
  * Uses a free silver price API (metal-api.com or similar)
  * Falls back to cached price if fetch fails
  */
+import { requireAdmin } from "@/lib/firebase-admin";
 import { getServiceClient } from "@/lib/supabase";
+import { unauthorized } from "@/lib/http";
 import { NextResponse } from "next/server";
 async function fetchsilverPriceFromAPI(): Promise<{ price: number; source: string; source_url: string } | null> {
   try {
@@ -40,7 +42,8 @@ async function fetchsilverPriceFromAPI(): Promise<{ price: number; source: strin
   }
 }
 
-export async function POST() {
+export async function POST(req: Request) {
+  if (!(await requireAdmin(req))) return unauthorized();
   try {
     const supabase = getServiceClient();
     
