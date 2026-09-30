@@ -62,6 +62,8 @@ export interface Product {
   availability: Availability;
   price: number;
   offer_price?: number | null;
+  offer_discount_amount?: number | null;
+  offer_discount_type?: 'flat' | 'percentage' | 'making_charge' | 'mixed' | null;
   offer_id: string | null;
   status: ProductStatus;
   image_urls: string[];

@@ -1,5 +1,5 @@
 import type { Offer, Discount } from "./data/types";
-import { computeOfferPrice } from "./offer-price";
+import { computeOfferPrice, type OfferPriceResult } from "./offer-price";
 
 export function formatPrice(n: number): string {
   const rounded = Math.round(Number(n) || 0);
@@ -32,6 +32,24 @@ export function resolveDiscounted(
     gst_percent?: number | null;
   }
 ): number | null {
+  return resolveOfferPricing(price, offer, product)?.offerPrice ?? null;
+}
+
+export function resolveOfferPricing(
+  price: number,
+  offer: (Offer & { discount?: Discount[] | Discount | null; discounts?: Discount[] | null }) | null,
+  product?: {
+    price_auto_calculated?: boolean;
+    material_type?: 'gold' | 'silver' | string | null;
+    purity_carats?: number | null;
+    weight_grams?: number | null;
+    making_charge_type?: 'percent' | 'flat' | string | null;
+    making_charge_percent?: number | null;
+    making_charge_flat?: number | null;
+    gold_price_used?: number | null;
+    gst_percent?: number | null;
+  }
+): OfferPriceResult | null {
   if (!offer) return null;
   const discountSource = offer.discount || offer.discounts;
   return computeOfferPrice(

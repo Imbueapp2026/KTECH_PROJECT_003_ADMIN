@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { formatPrice, formatWeight, resolveDiscounted } from "@/lib/utils";
+import { formatPrice, formatWeight, resolveOfferPricing } from "@/lib/utils";
 import { calculatePriceBreakdown } from "@/lib/pricing";
 import type {
   Category,
@@ -119,7 +119,8 @@ export default function ProductDetailPage() {
     );
   }
 
-  const discounted = resolveDiscounted(product.price, product.offer, product);
+  const offerPricing = resolveOfferPricing(product.price, product.offer, product);
+  const discounted = offerPricing?.offerPrice ?? null;
   const onSale = discounted != null;
   const activeDiscount: Discount | null = (() => {
     const o = product.offer;
@@ -431,6 +432,11 @@ export default function ProductDetailPage() {
                           <span className="font-semibold text-[var(--color-quaternary)]">
                             {formatPrice(offerBreakdown.makingCharge)}
                           </span>
+                          {offerPricing?.discountType === 'making_charge' && (
+                            <span className="text-xs text-[var(--color-success)]">
+                              Save {formatPrice(offerPricing.discountAmount ?? 0)}
+                            </span>
+                          )}
                         </span>
                       ) : (
                         formatPrice(breakdown.makingCharge)

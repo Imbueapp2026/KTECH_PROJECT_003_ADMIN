@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Discount, Offer } from "./data/types";
-import { computeOfferPrice, type OfferPriceProduct } from "./offer-price";
+import { computeOfferPrice, type OfferDiscountType, type OfferPriceProduct } from "./offer-price";
 
 export const MAX_OFFER_ASSIGNMENT_ITEMS = 5000;
 const PAGE_SIZE = 500;
@@ -16,6 +16,8 @@ export type OfferAssignmentItem = {
   id: string;
   offer_id: string | null;
   offer_price: number | null;
+  offer_discount_amount: number | null;
+  offer_discount_type: OfferDiscountType | null;
 };
 
 type AssignmentProduct = OfferPriceProduct & {
@@ -107,13 +109,18 @@ export async function prepareOfferAssignment(
       .sort((left, right) => left.label.localeCompare(right.label));
   }
 
-  const items = products.map((product) => ({
-    id: product.id,
-    offer_id: offerId,
-    offer_price: computeOfferPrice(product, offer, offer.discounts, {
+  const items = products.map((product) => {
+    const result = computeOfferPrice(product, offer, offer.discounts, {
       metalPricePerGram: product.gold_price_used,
-    }),
-  }));
+    });
+    return {
+      id: product.id,
+      offer_id: offerId,
+      offer_price: result.offerPrice,
+      offer_discount_amount: result.discountAmount,
+      offer_discount_type: result.discountType,
+    };
+  });
 
   return {
     items,
@@ -165,6 +172,12 @@ export async function clearOfferAssignments(
   offerId: string,
 ): Promise<number> {
   const products = await fetchAllProducts(supabase, offerId);
-  const items = products.map((product) => ({ id: product.id, offer_id: null, offer_price: null }));
+  const items = products.map((product) => ({
+    id: product.id,
+    offer_id: null,
+    offer_price: null,
+    offer_discount_amount: null,
+    offer_discount_type: null,
+  }));
   return applyOfferPriceItems(supabase, items);
 }

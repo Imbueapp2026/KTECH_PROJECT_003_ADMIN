@@ -71,7 +71,7 @@ export async function GET(req: Request) {
     let query = supabase
       .from("products")
       .select(
-        "id, name, category_id, description, hallmark_certified, availability, price, offer_id, status, image_urls, created_at, updated_at, purity_carats, weight_grams, net_weight_grams, making_charge_percent, making_charge_flat, making_charge_type, price_auto_calculated, certifications, gold_price_used, material_type, gst_percent, festival_id, categories(id, name, slug)",
+        "id, name, category_id, description, hallmark_certified, availability, price, offer_id, offer_price, offer_discount_amount, offer_discount_type, status, image_urls, created_at, updated_at, purity_carats, weight_grams, net_weight_grams, making_charge_percent, making_charge_flat, making_charge_type, price_auto_calculated, certifications, gold_price_used, material_type, gst_percent, festival_id, categories(id, name, slug)",
         { count: "exact" },
       )
       .order("updated_at", { ascending: false });
@@ -89,7 +89,7 @@ export async function GET(req: Request) {
       const fallbackQuery = supabase
         .from("products")
         .select(
-          "id, name, category_id, description, hallmark_certified, availability, price, offer_id, status, image_urls, created_at, updated_at, purity_carats, weight_grams, net_weight_grams, making_charge_percent, making_charge_flat, making_charge_type, price_auto_calculated, certifications, gold_price_used, material_type, gst_percent, categories(id, name, slug)",
+          "id, name, category_id, description, hallmark_certified, availability, price, offer_id, offer_price, offer_discount_amount, offer_discount_type, status, image_urls, created_at, updated_at, purity_carats, weight_grams, net_weight_grams, making_charge_percent, making_charge_flat, making_charge_type, price_auto_calculated, certifications, gold_price_used, material_type, gst_percent, categories(id, name, slug)",
           { count: "exact" },
         )
         .order("updated_at", { ascending: false });
@@ -289,7 +289,9 @@ export async function POST(req: Request) {
       gst_percent,
     }, offer_id);
     if (offerPriceResult.error) return serverError(offerPriceResult.error);
-    insertData.offer_price = offerPriceResult.data;
+    insertData.offer_price = offerPriceResult.data.offerPrice;
+    insertData.offer_discount_amount = offerPriceResult.data.discountAmount;
+    insertData.offer_discount_type = offerPriceResult.data.discountType;
 
     // Only include certifications if it's not null
     if (certifications !== null) {
