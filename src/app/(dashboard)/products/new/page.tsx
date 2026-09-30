@@ -10,13 +10,13 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { ImageUploader } from "@/components/products/ImageUploader";
 import { calculateDirectPrice, calculateMetalPrice, PURITY_OPTIONS, MAKING_CHARGE_TYPES } from "@/lib/pricing";
-import type { Category, Offer } from "@/lib/data/types";
+import type { Category, Offer, OfferWithDiscounts } from "@/lib/data/types";
 
 export default function NewProductPage() {
   const router = useRouter();
   const { push } = useToast();
   const [categories, setCategories] = useState<Category[]>([]);
-  const [offers, setOffers] = useState<any[]>([]);
+  const [offers, setOffers] = useState<OfferWithDiscounts[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -40,12 +40,12 @@ export function resolveDiscounted(
     if (product && product.price_auto_calculated !== false && product.weight_grams && product.gold_price_used) {
       return calculateMetalPrice({
         metalPricePerGram: product.gold_price_used,
-        purityCarats: product.material_type === 'gold' ? (product.purity_carats as any) : null,
+        purityCarats: product.material_type === 'gold' ? (product.purity_carats as 24 | 22 | 18 | 14 | 9 | null) : null,
         weightGrams: product.weight_grams,
         makingCharge: d.value,
         makingChargeType: 'percent',
         gstPercent: product.gst_percent ?? 5,
-        materialType: (product.material_type as any) || 'gold'
+        materialType: (product.material_type as 'gold' | 'silver' | 'platinum') || 'gold'
       });
     }
     return null;

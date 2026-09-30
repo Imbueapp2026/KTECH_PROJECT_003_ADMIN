@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { ImageUploader } from "@/components/products/ImageUploader";
 import { calculateDirectPrice, calculateMetalPrice, PURITY_OPTIONS, MAKING_CHARGE_TYPES } from "@/lib/pricing";
-import type { Product, Category, Offer, Discount } from "@/lib/data/types";
+import type { Product, Category, Offer, Discount, OfferWithDiscounts } from "@/lib/data/types";
 
 type Detail = Product & {
   category: Category | null;
@@ -34,7 +34,7 @@ export default function ProductEditPage({ params }: { params: Promise<{ id: stri
   const { push } = useToast();
   const [product, setProduct] = useState<Detail | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [offers, setOffers] = useState<any[]>([]);
+  const [offers, setOffers] = useState<OfferWithDiscounts[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
