@@ -13,13 +13,14 @@ import { formatPrice, formatWeight, resolveDiscounted } from "@/lib/utils";
 import type {
   Category,
   Discount,
+  DiscountType,
   Offer,
   Product,
 } from "@/lib/data/types";
 
 type Detail = Product & {
   category: Category | null;
-  offer: (Offer & { discount: Discount[] | Discount | null }) | null;
+  offer: (Offer & { discount?: Discount[] | Discount | null; discounts?: Discount[] }) | null;
   purity_carats?: number | null;
   weight_grams?: number | null;
   net_weight_grams?: number | null;
@@ -119,6 +120,22 @@ export default function ProductDetailPage() {
 
   const discounted = resolveDiscounted(product.price, product.offer, product);
   const onSale = discounted != null;
+  const activeDiscount: Discount | null = (() => {
+    const o = product.offer;
+    if (!o) return null;
+    const src = (o as { discounts?: Discount[] }).discounts ?? (Array.isArray((o as { discount?: Discount | Discount[] | null }).discount) ? (o as { discount: Discount[] }).discount : (o as { discount?: Discount | null }).discount ? [(o as { discount: Discount }).discount] : []);
+    return src[0] ?? null;
+  })();
+  const isMakingChargeOffer = activeDiscount?.discount_type === 'making_charge';
+
+  function formatDiscountLabel(d: Discount | null): string {
+    if (!d) return '';
+    const t = d.discount_type as DiscountType;
+    if (t === 'percentage' || t as string === 'percent') return `${d.value}% off total price`;
+    if (t === 'flat') return `₹${d.value} flat off`;
+    if (t === 'making_charge') return `Making charge reduced to ${d.value}%`;
+    return `${d.value}`;
+  }
 
   return (
     <div className="p-5 md:p-8 max-w-6xl flex flex-col gap-6">
@@ -233,6 +250,34 @@ export default function ProductDetailPage() {
             </div>
           </div>
 
+          {/* Active Offer Panel */}
+          {product.offer?.is_active && (
+            <div className="bg-[var(--color-quaternary-soft)]/60 border border-[var(--color-quaternary)]/40 rounded-[var(--radius-md)] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.08em] font-semibold text-[var(--color-quaternary)]">Active Offer</p>
+                  <p className="mt-1 text-sm font-semibold text-[var(--color-ink)]">{product.offer.label}</p>
+                  {activeDiscount && (
+                    <p className="text-xs text-[var(--color-tertiary)] mt-0.5">{formatDiscountLabel(activeDiscount)}</p>
+                  )}
+                  {product.offer.description && (
+                    <p className="text-xs text-[var(--color-ink-soft)] mt-1">{product.offer.description}</p>
+                  )}
+                </div>
+                <Badge tone={onSale ? "new" : "neutral"}>
+                  {onSale ? formatDiscountLabel(activeDiscount) : product.offer.label}
+                </Badge>
+              </div>
+              {onSale && (
+                <div className="mt-3 pt-3 border-t border-[var(--color-quaternary)]/20 flex items-baseline gap-2">
+                  <span className="text-xs text-[var(--color-tertiary)]">Offer price:</span>
+                  <span className="text-base font-semibold text-[var(--color-quaternary)]">{formatPrice(discounted!)}</span>
+                  <span className="text-xs text-[var(--color-tertiary)] line-through">{formatPrice(product.price)}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {product.description && (
             <div className="bg-[var(--color-primary)] border border-[var(--color-tertiary-soft)] rounded-[var(--radius-md)] p-5">
               <p className="text-[10px] uppercase tracking-[0.08em] font-semibold text-[var(--color-tertiary)] mb-2">
@@ -278,12 +323,24 @@ export default function ProductDetailPage() {
               )}
               <dt className="text-[var(--color-tertiary)]">Making Charge</dt>
               <dd className="font-medium">
-                {product.making_charge_type === 'percent' && product.making_charge_percent
-                  ? `${product.making_charge_percent}% of gold value`
-                  : product.making_charge_type === 'flat' && product.making_charge_flat
-                  ? `₹${formatPrice(product.making_charge_flat)} flat`
-                  : "—"
-                }
+                {isMakingChargeOffer ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="line-through text-[var(--color-tertiary)]">
+                      {product.making_charge_type === 'percent' && product.making_charge_percent
+                        ? `${product.making_charge_percent}%`
+                        : product.making_charge_type === 'flat' && product.making_charge_flat
+                        ? `₹${product.making_charge_flat}`
+                        : '—'}
+                    </span>
+                    <Badge tone="new">{activeDiscount?.value}% (offer)</Badge>
+                  </span>
+                ) : (
+                  product.making_charge_type === 'percent' && product.making_charge_percent
+                    ? `${product.making_charge_percent}% of gold value`
+                    : product.making_charge_type === 'flat' && product.making_charge_flat
+                    ? `₹${formatPrice(product.making_charge_flat)} flat`
+                    : '—'
+                )}
               </dd>
               <dt className="text-[var(--color-tertiary)]">Gold Price Used</dt>
               <dd className="font-medium">

@@ -8,14 +8,31 @@ import { formatPrice, resolveDiscounted } from "@/lib/utils";
 import type {
   Category,
   Discount,
+  DiscountType,
   Offer,
+  OfferWithDiscounts,
   Product,
 } from "@/lib/data/types";
 
 export type ProductCardData = Product & {
   category?: Category | null;
-  offer?: (Offer & { discount: Discount[] | Discount | null }) | null;
+  offer?: (Offer & { discount?: Discount[] | Discount | null; discounts?: Discount[] }) | null;
 };
+
+function getDiscountLabel(offer: ProductCardData['offer']): string | null {
+  if (!offer?.is_active) return null;
+  const discounts = (offer as OfferWithDiscounts & { discount?: Discount | Discount[] | null }).discounts
+    ?? (Array.isArray((offer as { discount?: Discount | Discount[] | null }).discount)
+      ? (offer as { discount: Discount[] }).discount
+      : (offer as { discount?: Discount | null }).discount ? [(offer as { discount: Discount }).discount] : []);
+  const d = discounts[0];
+  if (!d) return offer.label;
+  const dtype = d.discount_type as DiscountType;
+  if (dtype === 'percentage' || (d.discount_type as string) === 'percent') return `${d.value}% off`;
+  if (dtype === 'flat') return `₹${d.value} off`;
+  if (dtype === 'making_charge') return `MC: ${d.value}%`;
+  return offer.label;
+}
 
 
 export function ProductCard({
@@ -52,9 +69,10 @@ export function ProductCard({
             No image
           </div>
         )}
-        {onSale && (
+        {/* Offer badge — show whenever offer is active, regardless of price resolution */}
+        {product.offer?.is_active && (
           <div className="absolute top-2 left-2">
-            <Badge tone="new">{product.offer?.label}</Badge>
+            <Badge tone="new">{getDiscountLabel(product.offer)}</Badge>
           </div>
         )}
         {isArchived && (
@@ -100,7 +118,7 @@ export function ProductCard({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1.5 pt-1 mt-auto">
+        <div className="flex items-center gap-1.5 pt-1 mt-auto flex-wrap">
           <Badge
             tone={
               product.availability === "available"
@@ -112,6 +130,7 @@ export function ProductCard({
           >
             {product.availability.replace("_", " ")}
           </Badge>
+          {product.status === "draft" && <Badge tone="neutral">Draft</Badge>}
           {product.hallmark_certified && (
             <Badge tone="gold">Hallmark</Badge>
           )}
