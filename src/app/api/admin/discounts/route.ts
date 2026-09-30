@@ -57,6 +57,25 @@ export async function POST(req: Request) {
     .insert({ offer_id, discount_type, value })
     .select()
     .single();
-  if (error) return serverError(error);
+  if (error) {
+    // 23514 = check constraint violation — DB enum doesn't include making_charge yet
+    if (error.code === "23514" || error.code === "23P01") {
+      return Response.json(
+        {
+          error:
+            "Database constraint error: the 'discounts' table CHECK constraint does not yet allow 'making_charge'. " +
+            "Run this SQL in your Supabase SQL editor to fix it:\n\n" +
+            "ALTER TABLE discounts DROP CONSTRAINT IF EXISTS discounts_discount_type_check;\n" +
+            "ALTER TABLE discounts ADD CONSTRAINT discounts_discount_type_check " +
+            "CHECK (discount_type IN ('percentage', 'flat', 'making_charge'));\n\n" +
+            "Then retry creating the offer.",
+          sql_fix:
+            "ALTER TABLE discounts DROP CONSTRAINT IF EXISTS discounts_discount_type_check;\nALTER TABLE discounts ADD CONSTRAINT discounts_discount_type_check CHECK (discount_type IN ('percentage', 'flat', 'making_charge'));",
+        },
+        { status: 422 },
+      );
+    }
+    return serverError(error);
+  }
   return Response.json({ data }, { status: 201 });
 }
