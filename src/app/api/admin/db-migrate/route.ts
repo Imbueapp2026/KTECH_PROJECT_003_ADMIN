@@ -19,30 +19,23 @@ export async function POST(req: Request) {
   const supabase = getServiceClient();
 
   if (patch === "discount_type_making_charge") {
-    // Drop the old CHECK constraint and recreate with making_charge included
+    // Add 'making_charge' to the discount_type PostgreSQL ENUM
     const { error } = await supabase.rpc("run_sql", {
-      query:
-        "ALTER TABLE discounts DROP CONSTRAINT IF EXISTS discounts_discount_type_check; " +
-        "ALTER TABLE discounts ADD CONSTRAINT discounts_discount_type_check " +
-        "CHECK (discount_type IN ('percentage', 'flat', 'making_charge'));",
+      query: "ALTER TYPE discount_type ADD VALUE IF NOT EXISTS 'making_charge';",
     }).single();
 
     if (error) {
-      // Supabase may not expose raw SQL RPC — return the SQL for manual execution
       return Response.json(
         {
           ok: false,
           message: "Could not auto-apply. Please run this SQL manually in your Supabase SQL editor:",
-          sql:
-            "ALTER TABLE discounts DROP CONSTRAINT IF EXISTS discounts_discount_type_check;\n" +
-            "ALTER TABLE discounts ADD CONSTRAINT discounts_discount_type_check " +
-            "CHECK (discount_type IN ('percentage', 'flat', 'making_charge'));",
+          sql: "ALTER TYPE discount_type ADD VALUE IF NOT EXISTS 'making_charge';",
         },
         { status: 422 },
       );
     }
 
-    return Response.json({ ok: true, message: "discount_type_making_charge constraint updated." });
+    return Response.json({ ok: true, message: "discount_type enum updated with 'making_charge'." });
   }
 
   return badRequest(`Unknown patch: ${patch}`);
