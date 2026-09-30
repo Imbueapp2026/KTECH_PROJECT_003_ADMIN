@@ -4,6 +4,7 @@
  */
 import { requireAdmin } from "@/lib/firebase-admin";
 import { getServiceClient } from "@/lib/supabase";
+import { recomputeOfferPrices } from "@/lib/offer-price-admin";
 import {
   badRequest,
   parseJson,
@@ -74,5 +75,7 @@ export async function POST(req: Request) {
     }
     return serverError(error);
   }
+  const offerPriceResult = await recomputeOfferPrices(supabase, offer_id);
+  if (offerPriceResult.error) return serverError(offerPriceResult.error);
   return Response.json({ data }, { status: 201 });
 }

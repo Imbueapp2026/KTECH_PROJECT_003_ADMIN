@@ -5,6 +5,7 @@
  */
 import { requireAdmin } from "@/lib/firebase-admin";
 import { getServiceClient } from "@/lib/supabase";
+import { recomputeAllOfferPrices } from "@/lib/offer-price-admin";
 import { unauthorized } from "@/lib/http";
 import { NextResponse } from "next/server";
 
@@ -48,6 +49,11 @@ export async function POST(req: Request) {
         { error: "Failed to recalculate prices" },
         { status: 500 }
       );
+    }
+
+    const offerPriceResult = await recomputeAllOfferPrices(supabase);
+    if (offerPriceResult.error) {
+      return NextResponse.json({ error: "Failed to update offer prices" }, { status: 500 });
     }
     
     // Parse the JSON result from the function

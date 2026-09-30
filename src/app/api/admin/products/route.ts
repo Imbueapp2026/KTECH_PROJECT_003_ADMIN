@@ -19,6 +19,7 @@ import {
   asUuid,
 } from "@/lib/http";
 import { calculateDirectPrice, calculateMetalPrice } from "@/lib/pricing";
+import { computeProductOfferPrice } from "@/lib/offer-price-admin";
 import type { Availability, ProductStatus } from "@/lib/data/types";
 
 const AVAILABILITY = ["available", "made_to_order", "sold"] as const;
@@ -239,7 +240,7 @@ export async function POST(req: Request) {
       const makingCharge = making_charge_type === 'percent' ? making_charge_percent : making_charge_flat;
       finalPrice = calculateMetalPrice({
         metalPricePerGram: usedMetalPrice,
-        purityCarats: material_type === 'gold' ? (purity_carats || 22) : null,
+        purityCarats: purity_carats || 24, // Default to 24K for silver
         weightGrams: weight_grams || 0,
         makingCharge: makingCharge!,
         makingChargeType: making_charge_type as 'percent' | 'flat',
@@ -274,6 +275,21 @@ export async function POST(req: Request) {
       gst_percent,
       net_weight_grams,
     };
+
+    const offerPriceResult = await computeProductOfferPrice(supabase, {
+      price: finalPrice ?? 0,
+      price_auto_calculated: isAutoCalculated,
+      material_type,
+      purity_carats,
+      weight_grams,
+      making_charge_type,
+      making_charge_percent,
+      making_charge_flat,
+      gold_price_used: goldPriceUsedValue,
+      gst_percent,
+    }, offer_id);
+    if (offerPriceResult.error) return serverError(offerPriceResult.error);
+    insertData.offer_price = offerPriceResult.data;
 
     // Only include certifications if it's not null
     if (certifications !== null) {

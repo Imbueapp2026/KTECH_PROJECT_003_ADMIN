@@ -4,6 +4,7 @@
  */
 import { requireAdmin } from "@/lib/firebase-admin";
 import { getServiceClient } from "@/lib/supabase";
+import { recomputeOfferPrices } from "@/lib/offer-price-admin";
 import { badRequest, serverError, unauthorized, asUuid } from "@/lib/http";
 
 export async function POST(
@@ -33,6 +34,9 @@ export async function POST(
 
   if (error) return serverError(error);
 
+  const offerPriceResult = await recomputeOfferPrices(supabase, id);
+  if (offerPriceResult.error) return serverError(offerPriceResult.error);
+
   return Response.json({ ok: true, updated: data?.length ?? 0 });
 }
 
@@ -49,7 +53,7 @@ export async function DELETE(
   // Remove this offer from all products that have it
   const { data, error } = await supabase
     .from("products")
-    .update({ offer_id: null })
+    .update({ offer_id: null, offer_price: null })
     .eq("offer_id", id)
     .select("id");
 

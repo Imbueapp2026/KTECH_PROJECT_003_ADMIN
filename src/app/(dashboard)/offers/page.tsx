@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { ProductGrid } from "@/components/products/ProductGrid";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { saveBannerWithFeedback } from "@/lib/offer-banner-ui";
 import type {
   Category,
   Discount,
@@ -14,10 +15,11 @@ import type {
   ProductJoined,
   Product,
   Festival,
+  OfferBanner,
 } from "@/lib/data/types";
 
 type BannerDraft = {
-  image_url: string;
+  product_id: string | null;
   alt_text: string;
   is_active: boolean;
   display_order: number;
@@ -162,34 +164,22 @@ export default function OffersPage() {
     }
   }
 
-  async function uploadBannerImage(offerId: string, file: File): Promise<string> {
-    try {
-      const formData = new FormData();
-      formData.append("files", file);
-      const token = await (await import("@/lib/auth/get-token")).getIdToken().catch(() => null);
-      const response = await fetch("/api/admin/products/upload", {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body: formData,
-      });
-      const result = await response.json();
-      if (!response.ok || !result.urls?.[0]) throw new Error(result.error ?? "Banner image upload failed.");
-      
-      return result.urls[0];
-    } catch (err: unknown) {
-      push(err instanceof Error ? err.message : "Failed to upload banner.", "danger");
-      throw err;
-    }
-  }
+  async function saveBanner(offer: OfferWithDiscounts, draft: BannerDraft, file: File | null) {
+    const formData = new FormData();
+    formData.append("product_id", draft.product_id ?? "");
+    formData.append("alt_text", draft.alt_text);
+    formData.append("is_active", String(draft.is_active));
+    formData.append("display_order", String(draft.display_order));
+    if (file) formData.append("file", file);
 
-  async function saveBanner(offer: OfferWithDiscounts, draft: BannerDraft) {
-    try {
-      const response = await api.put<{ data: OfferWithDiscounts["offer_banners"][number] }>(`/api/admin/offers/${offer.id}/banner`, draft);
-      setOffers((current) => current?.map((item) => item.id === offer.id ? { ...item, offer_banners: [response.data] } : item) ?? null);
-      push("Offer banner saved.", "success");
-    } catch (err) {
-      push(err instanceof ApiError ? err.message : "Failed to save offer banner.", "danger");
-    }
+    return saveBannerWithFeedback(
+      () => api.putFormData<OfferBanner>(`/api/admin/offers/${offer.id}/banner`, formData),
+      (saved) => {
+        setOffers((current) => current?.map((item) => item.id === offer.id ? { ...item, offer_banners: [saved] } : item) ?? null);
+        push("Offer banner saved.", "success");
+      },
+      (err) => push(err instanceof ApiError ? err.message : "Failed to save offer banner.", "danger"),
+    );
   }
 
   async function deleteBanner(offerId: string) {
@@ -350,7 +340,7 @@ export default function OffersPage() {
             <OfferBannerEditor
               key={`${o.id}-${o.offer_banners?.[0]?.id ?? 'nobanner'}`}
               offer={o}
-              onUpload={uploadBannerImage}
+              products={inOffer.filter((product) => product.status === "published")}
               onSave={saveBanner}
               onDelete={deleteBanner}
             />
@@ -384,36 +374,50 @@ export default function OffersPage() {
 
 function OfferBannerEditor({
   offer,
-  onUpload,
+  products,
   onSave,
   onDelete,
 }: {
   offer: OfferWithDiscounts;
-  onUpload: (offerId: string, file: File) => Promise<string>;
-  onSave: (offer: OfferWithDiscounts, draft: BannerDraft) => Promise<void>;
+  products: ProductJoined[];
+  onSave: (offer: OfferWithDiscounts, draft: BannerDraft, file: File | null) => Promise<OfferBanner | null>;
   onDelete: (offerId: string) => Promise<void>;
 }) {
   const banner = offer.offer_banners?.[0];
   const [draft, setDraft] = useState<BannerDraft>({
-    image_url: banner?.image_url ?? "",
+    product_id: banner?.product_id ?? null,
     alt_text: banner?.alt_text ?? `${offer.label} offer`,
     is_active: banner?.is_active ?? true,
     display_order: banner?.display_order ?? 0,
   });
-  const [uploading, setUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  async function handleFile(file: File | undefined) {
-    if (!file) return;
-    setUploading(true);
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  async function handleSave() {
+    if (saving) return;
+    setSaving(true);
     try {
-      const url = await onUpload(offer.id, file);
-      setDraft((current) => ({ ...current, image_url: url }));
-    } catch {
-      // Upload error is handled by the parent
+      const saved = await onSave(offer, draft, selectedFile);
+      if (!saved) return;
+      setDraft({
+        product_id: saved.product_id,
+        alt_text: saved.alt_text,
+        is_active: saved.is_active,
+        display_order: saved.display_order,
+      });
+      setSelectedFile(null);
+      setPreviewUrl(null);
     } finally {
-      setUploading(false);
+      setSaving(false);
     }
   }
+
+  const imageUrl = previewUrl ?? banner?.image_url;
 
   return (
     <div className="border-b border-[var(--color-tertiary-soft)] bg-[var(--color-surface-muted)]/30 px-4 py-5 sm:px-5">
@@ -438,10 +442,10 @@ function OfferBannerEditor({
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:items-start">
         <div className="relative aspect-[16/7] min-h-[150px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-tertiary-soft)] bg-[var(--color-surface-sunken)]">
-          {draft.image_url && draft.image_url !== "pending" ? (
+          {imageUrl ? (
             <Image
-              src={draft.image_url}
-              alt="Current offer banner preview"
+              src={imageUrl}
+              alt={draft.alt_text}
               fill
               unoptimized
               sizes="(max-width: 1024px) 100vw, 50vw"
@@ -452,9 +456,9 @@ function OfferBannerEditor({
               Choose an image to preview the banner here.
             </div>
           )}
-          {uploading && (
+          {saving && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-xs font-medium text-white">
-              Uploading image...
+              Saving banner...
             </div>
           )}
         </div>
@@ -474,14 +478,38 @@ function OfferBannerEditor({
           </label>
 
           <label className="flex cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border border-dashed border-[var(--color-quaternary)]/60 px-4 py-2.5 text-sm font-medium text-[var(--color-quaternary)] transition-colors hover:bg-[var(--color-quaternary-soft)]">
-            {uploading ? "Uploading..." : draft.image_url ? "Replace banner image" : "Choose banner image"}
+            {selectedFile ? "Choose a different image" : imageUrl ? "Replace banner image" : "Choose banner image"}
             <input
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
+              accept="image/jpeg,image/png,image/webp"
               className="sr-only"
-              disabled={uploading}
-              onChange={(e) => void handleFile(e.target.files?.[0])}
+              disabled={saving}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  setSelectedFile(file);
+                  setPreviewUrl(URL.createObjectURL(file));
+                }
+                e.currentTarget.value = "";
+              }}
             />
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] uppercase tracking-[0.06em] font-semibold text-[var(--color-ink-soft)]">
+              Target product
+            </span>
+            <select
+              value={draft.product_id ?? ""}
+              disabled={saving}
+              onChange={(e) => setDraft({ ...draft, product_id: e.target.value || null })}
+              className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-tertiary-soft)] bg-[var(--color-primary)] px-3 text-sm text-[var(--color-ink)] focus:border-[var(--color-quaternary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-quaternary)]/20"
+            >
+              <option value="">All products in this offer</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>{product.name}</option>
+              ))}
+            </select>
           </label>
 
           <label className="flex items-center gap-2 text-sm text-[var(--color-ink)]">
@@ -496,10 +524,10 @@ function OfferBannerEditor({
 
           <Button
             className="w-full"
-            disabled={!draft.image_url || draft.image_url === "pending" || !draft.alt_text || uploading}
-            onClick={() => void onSave(offer, draft)}
+            disabled={(!imageUrl && !selectedFile) || !draft.alt_text.trim() || saving}
+            onClick={() => void handleSave()}
           >
-            Save banner
+            {saving ? "Saving..." : "Save banner"}
           </Button>
         </div>
       </div>

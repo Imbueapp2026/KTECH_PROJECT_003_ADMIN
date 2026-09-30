@@ -4,6 +4,7 @@
  */
 import { requireAdmin } from "@/lib/firebase-admin";
 import { getServiceClient } from "@/lib/supabase";
+import { recomputeOfferPrices } from "@/lib/offer-price-admin";
 import {
   badRequest,
   notFound,
@@ -36,7 +37,7 @@ export async function PATCH(
   const supabase = getServiceClient();
   const { data: current, error: fetchError } = await supabase
     .from("discounts")
-    .select("discount_type, value")
+    .select("offer_id, discount_type, value")
     .eq("id", id)
     .single();
   if (fetchError) {
@@ -72,6 +73,8 @@ export async function PATCH(
     if (error.code === "PGRST116") return notFound();
     return serverError(error);
   }
+  const offerPriceResult = await recomputeOfferPrices(supabase, current.offer_id);
+  if (offerPriceResult.error) return serverError(offerPriceResult.error);
   return Response.json({ data });
 }
 
@@ -84,7 +87,19 @@ export async function DELETE(
   if (!asUuid(id)) return badRequest("invalid id");
 
   const supabase = getServiceClient();
+  const { data: discount, error: fetchError } = await supabase
+    .from("discounts")
+    .select("offer_id")
+    .eq("id", id)
+    .single();
+  if (fetchError) {
+    if (fetchError.code === "PGRST116") return notFound();
+    return serverError(fetchError);
+  }
+
   const { error } = await supabase.from("discounts").delete().eq("id", id);
   if (error) return serverError(error);
+  const offerPriceResult = await recomputeOfferPrices(supabase, discount.offer_id);
+  if (offerPriceResult.error) return serverError(offerPriceResult.error);
   return Response.json({ ok: true });
 }

@@ -7,6 +7,7 @@
  */
 import { requireAdmin } from "@/lib/firebase-admin";
 import { getServiceClient } from "@/lib/supabase";
+import { removeOfferBannerImage } from "@/lib/offer-banner-admin";
 import {
   badRequest,
   notFound,
@@ -20,6 +21,7 @@ import {
   asUuid,
 } from "@/lib/http";
 import { calculateDirectPrice, calculateMetalPrice } from "@/lib/pricing";
+import { computeProductOfferPrice } from "@/lib/offer-price-admin";
 import type { Availability, ProductStatus } from "@/lib/data/types";
 
 const AVAILABILITY = ["available", "made_to_order", "sold"] as const;
@@ -220,7 +222,7 @@ export async function PATCH(
   const supabase = getServiceClient();
   const { data: currentProduct } = await supabase
     .from("products")
-    .select("price, price_auto_calculated, purity_carats, weight_grams, making_charge_percent, making_charge_flat, making_charge_type, gold_price_used, material_type, gst_percent")
+    .select("price, offer_id, price_auto_calculated, purity_carats, weight_grams, making_charge_percent, making_charge_flat, making_charge_type, gold_price_used, material_type, gst_percent")
     .eq("id", id)
     .single();
   
@@ -294,6 +296,15 @@ export async function PATCH(
     patch.price_auto_calculated = true;
     patch.gst_percent = gstPercent;
   }
+
+  const nextOfferId = (patch.offer_id === undefined ? currentProduct.offer_id : patch.offer_id) as string | null;
+  const offerPriceResult = await computeProductOfferPrice(supabase, {
+    ...currentProduct,
+    ...patch,
+    price: (patch.price ?? currentProduct.price) as number,
+  }, nextOfferId);
+  if (offerPriceResult.error) return serverError(offerPriceResult.error);
+  patch.offer_price = offerPriceResult.data;
   
   patch.updated_at = new Date().toISOString();
 
@@ -336,11 +347,23 @@ export async function DELETE(
   if (!asUuid(id)) return badRequest("invalid id");
 
   const supabase = getServiceClient();
+  const { data: banners, error: bannerFetchError } = await supabase
+    .from("offer_banners")
+    .select("image_url")
+    .eq("product_id", id);
+  if (bannerFetchError) return serverError(bannerFetchError);
+
   const { error: bannerError } = await supabase
     .from("offer_banners")
     .delete()
     .eq("product_id", id);
   if (bannerError) return serverError(bannerError);
+
+  try {
+    await Promise.all((banners ?? []).map((banner) => removeOfferBannerImage(supabase, banner.image_url)));
+  } catch (storageError) {
+    return serverError(storageError);
+  }
 
   const { data, error } = await supabase
     .from("products")

@@ -97,3 +97,11 @@ The project is a lead-generation and showcase website for Avirat Jewelers, a loc
 ```
 
 ---
+
+### [2026-09-30] Repair admin offer-banner persistence
+**Agent:** GitHub Copilot
+**Files/areas touched:** `src/app/(dashboard)/offers/page.tsx`, admin offer/banner and product delete routes, `src/lib/api.ts`, offer-banner helpers and tests, `DB_CHANGES.sql`
+
+The offer-banner editor now submits its selected file and banner fields together to the authenticated banner route instead of uploading first through the generic product-image endpoint. The server validates the image type and 5 MB limit, validates the offer and selected published product, uploads under an offer-specific path, and upserts the public Storage URL on `offer_id` with a fresh `updated_at`. A failed database write triggers cleanup of the new object; replacement, banner removal, offer removal, and product-linked banner removal clean up stored objects using a URL-origin and bucket-path guard. The editor previews a pending local image, disables Save during submission, and updates its saved preview only after the server returns the row. `DB_CHANGES.sql` contains manual bucket and object policy SQL only; it was not run. Mocked-Supabase tests use Node's built-in runner because this checkout has no installed Vitest executable and adding dependencies was prohibited. Baseline lint, typecheck, and build passed; the build emitted pre-existing Firebase invalid-key diagnostics. This does not prove access to the real bucket: the developer must apply the SQL manually and perform the requested browser test. Existing offer-pricing edits were preserved on the branch and remain backed up in the named stash.
+
+---

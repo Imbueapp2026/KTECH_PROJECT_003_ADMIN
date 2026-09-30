@@ -4,6 +4,8 @@
  */
 import { requireAdmin } from "@/lib/firebase-admin";
 import { getServiceClient } from "@/lib/supabase";
+import { recomputeOfferPrices } from "@/lib/offer-price-admin";
+import { removeOfferBannerImage } from "@/lib/offer-banner-admin";
 import {
   badRequest,
   notFound,
@@ -65,6 +67,8 @@ export async function PATCH(
     if (error.code === "PGRST116") return notFound();
     return serverError(error);
   }
+  const offerPriceResult = await recomputeOfferPrices(supabase, id);
+  if (offerPriceResult.error) return serverError(offerPriceResult.error);
   return Response.json({ data });
 }
 
@@ -78,6 +82,19 @@ export async function DELETE(
 
   const supabase = getServiceClient();
 
+  const { data: banner, error: bannerError } = await supabase
+    .from("offer_banners")
+    .select("image_url")
+    .eq("offer_id", id)
+    .maybeSingle();
+  if (bannerError) return serverError(bannerError);
+
+  const { error: clearError } = await supabase
+    .from("products")
+    .update({ offer_id: null, offer_price: null })
+    .eq("offer_id", id);
+  if (clearError) return serverError(clearError);
+
   // Use Supabase RPC for transactional delete
   // This ensures all operations succeed or fail together
   const { error } = await supabase.rpc("delete_offer_cascade", { offer_id: id });
@@ -88,7 +105,7 @@ export async function DELETE(
     // then delete the offer itself.
     const { error: clearErr } = await supabase
       .from("products")
-      .update({ offer_id: null })
+      .update({ offer_id: null, offer_price: null })
       .eq("offer_id", id);
     if (clearErr) return serverError(clearErr);
 
@@ -107,6 +124,12 @@ export async function DELETE(
 
     const { error: delErr } = await supabase.from("offers").delete().eq("id", id);
     if (delErr) return serverError(delErr);
+  }
+
+  try {
+    await removeOfferBannerImage(supabase, banner?.image_url);
+  } catch (storageError) {
+    return serverError(storageError);
   }
 
   return Response.json({ ok: true });
