@@ -16,7 +16,7 @@ import {
 } from "@/lib/http";
 import type { DiscountType } from "@/lib/data/types";
 
-const TYPES = ["percentage", "flat"] as const;
+const TYPES = ["percentage", "flat", "making_charge"] as const;
 
 export async function PATCH(
   req: Request,

@@ -16,7 +16,7 @@ import {
 } from "@/lib/http";
 import type { DiscountType } from "@/lib/data/types";
 
-const TYPES = ["percentage", "flat"] as const;
+const TYPES = ["percentage", "flat", "making_charge"] as const;
 
 export async function GET(req: Request) {
   if (!(await requireAdmin(req))) return unauthorized();
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
   const discount_type = asEnum<DiscountType>(body.discount_type, TYPES);
   const value = asNumber(body.value);
   if (!offer_id) return badRequest("offer_id is required");
-  if (!discount_type) return badRequest("discount_type must be percentage|flat");
+  if (!discount_type) return badRequest("discount_type must be percentage|flat|making_charge");
   if (value == null || value < 0) return badRequest("value is required (number)");
   if (discount_type === "percentage" && value > 100)
     return badRequest("percentage cannot exceed 100");
