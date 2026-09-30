@@ -17,10 +17,11 @@ export function formatWeight(n: number | null | undefined): string {
 
 export function resolveDiscounted(
   price: number,
-  offer: (Offer & { discount: Discount[] | Discount | null }) | null,
+  offer: (Offer & { discount?: Discount[] | Discount | null; discounts?: Discount[] | null }) | null,
 ): number | null {
   if (!offer || !offer.is_active) return null;
-  const d = Array.isArray(offer.discount) ? offer.discount[0] : offer.discount;
+  const discountSource = offer.discount || offer.discounts;
+  const d = Array.isArray(discountSource) ? discountSource[0] : discountSource;
   if (!d) return null;
   if (d.discount_type === "percentage" || (d.discount_type as string) === "percent") {
     return price * (1 - d.value / 100);

@@ -38,7 +38,7 @@ export async function GET(
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, name, category_id, description, hallmark_certified, availability, price, offer_id, status, image_urls, created_at, updated_at, purity_carats, weight_grams, net_weight_grams, making_charge_percent, making_charge_flat, making_charge_type, price_auto_calculated, certifications, gold_price_used, material_type, gst_percent, category:categories(id, name, slug, icon_svg)",
+      "id, name, category_id, description, hallmark_certified, availability, price, offer_id, status, image_urls, created_at, updated_at, purity_carats, weight_grams, net_weight_grams, making_charge_percent, making_charge_flat, making_charge_type, price_auto_calculated, certifications, gold_price_used, material_type, gst_percent, category:categories(id, name, slug, icon_svg), offer:offers(id, label, description, is_active, start_date, end_date, created_at, discounts(id, discount_type, value))",
     )
     .eq("id", id)
     .single();
