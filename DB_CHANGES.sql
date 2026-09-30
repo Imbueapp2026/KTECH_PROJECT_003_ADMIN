@@ -67,3 +67,40 @@ using (
   bucket_id = 'product-images'
   and (storage.foldername(name))[1] = 'offer-banners'
 );
+
+create or replace function public.apply_offer_prices(p_items jsonb)
+returns integer
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  updated_count integer;
+begin
+  if jsonb_typeof(p_items) is distinct from 'array' then
+    raise exception 'p_items must be a JSON array';
+  end if;
+
+  update public.products as product
+  set offer_id = item.offer_id,
+      offer_price = item.offer_price,
+      updated_at = now()
+  from jsonb_to_recordset(p_items) as item(
+    id uuid,
+    offer_id uuid,
+    offer_price numeric
+  )
+  where product.id = item.id;
+
+  get diagnostics updated_count = row_count;
+  if updated_count <> jsonb_array_length(p_items) then
+    raise exception 'Offer assignment matched % products but received % items',
+      updated_count, jsonb_array_length(p_items);
+  end if;
+
+  return updated_count;
+end;
+$$;
+
+revoke all on function public.apply_offer_prices(jsonb) from public, anon, authenticated;
+grant execute on function public.apply_offer_prices(jsonb) to service_role;

@@ -4,8 +4,8 @@
  */
 import { requireAdmin } from "@/lib/firebase-admin";
 import { getServiceClient } from "@/lib/supabase";
-import { recomputeOfferPrices } from "@/lib/offer-price-admin";
-import { badRequest, serverError, unauthorized, asUuid } from "@/lib/http";
+import { applyOfferAssignment, clearOfferAssignments, OfferAssignmentError, prepareOfferAssignment } from "@/lib/offer-assignment-admin";
+import { badRequest, parseJson, serverError, unauthorized, asUuid } from "@/lib/http";
 
 export async function POST(
   req: Request,
@@ -15,29 +15,20 @@ export async function POST(
   const { id } = await params;
   if (!asUuid(id)) return badRequest("invalid id");
 
-  const supabase = getServiceClient();
+  const body = (await parseJson<{ confirmOverride?: unknown }>(req)) ?? {};
+  if (body.confirmOverride !== undefined && typeof body.confirmOverride !== "boolean") {
+    return badRequest("confirmOverride must be boolean");
+  }
 
-  // Verify the offer exists
-  const { error: offerErr } = await supabase
-    .from("offers")
-    .select("id")
-    .eq("id", id)
-    .single();
-  if (offerErr) return badRequest("offer not found");
-
-  // Apply this offer to ALL published/draft products that don't already have a different offer
-  const { data, error } = await supabase
-    .from("products")
-    .update({ offer_id: id })
-    .in("status", ["published", "draft"])
-    .select("id");
-
-  if (error) return serverError(error);
-
-  const offerPriceResult = await recomputeOfferPrices(supabase, id);
-  if (offerPriceResult.error) return serverError(offerPriceResult.error);
-
-  return Response.json({ ok: true, updated: data?.length ?? 0 });
+  try {
+    const supabase = getServiceClient();
+    const plan = await prepareOfferAssignment(supabase, id);
+    const result = await applyOfferAssignment(supabase, plan, body.confirmOverride === true);
+    return Response.json(body.confirmOverride === true ? { ok: true, ...result } : result);
+  } catch (error) {
+    if (error instanceof OfferAssignmentError) return badRequest(error.message);
+    return serverError(error);
+  }
 }
 
 export async function DELETE(
@@ -48,16 +39,11 @@ export async function DELETE(
   const { id } = await params;
   if (!asUuid(id)) return badRequest("invalid id");
 
-  const supabase = getServiceClient();
-
-  // Remove this offer from all products that have it
-  const { data, error } = await supabase
-    .from("products")
-    .update({ offer_id: null, offer_price: null })
-    .eq("offer_id", id)
-    .select("id");
-
-  if (error) return serverError(error);
-
-  return Response.json({ ok: true, updated: data?.length ?? 0 });
+  try {
+    const updated = await clearOfferAssignments(getServiceClient(), id);
+    return Response.json({ ok: true, updated });
+  } catch (error) {
+    if (error instanceof OfferAssignmentError) return badRequest(error.message);
+    return serverError(error);
+  }
 }

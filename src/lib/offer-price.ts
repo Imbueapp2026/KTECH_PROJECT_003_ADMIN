@@ -33,10 +33,8 @@ export function computeOfferPrice(
     if (!Number.isNaN(start) && Date.now() < start) return null;
   }
   if (offer.end_date) {
-    const end = new Date(offer.end_date);
-    end.setHours(23, 59, 59, 999);
-    const endMs = end.getTime();
-    if (!Number.isNaN(endMs) && Date.now() > endMs) return null;
+    const endMs = new Date(offer.end_date).getTime();
+    if (!Number.isNaN(endMs) && Date.now() >= endMs) return null;
   }
 
   const discount = Array.isArray(discounts) ? discounts[0] : discounts;

@@ -107,6 +107,10 @@ describe('computeOfferPrice', () => {
       { id: 'product-2', price: 2000 },
     ];
     const client = {
+      rpc: async (_name: string, args: { p_items: Array<{ id: string; offer_price: number | null }> }) => {
+        updatedRows.push(...args.p_items);
+        return { data: args.p_items.length, error: null };
+      },
       from(table: string) {
         if (table === 'offers') {
           const query = {

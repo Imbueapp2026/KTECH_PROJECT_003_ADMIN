@@ -7,10 +7,12 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { ImageUploader } from "@/components/products/ImageUploader";
 import { calculateDirectPrice, calculateMetalPrice, PURITY_OPTIONS, MAKING_CHARGE_TYPES } from "@/lib/pricing";
 import { formatPrice, resolveDiscounted } from "@/lib/utils";
+import { formatOfferOverrideWarning, readOfferAssignmentPreview, type OfferAssignmentPreview } from "@/lib/offer-assignment-ui";
 import type { Product, Category, Offer, Discount, OfferWithDiscounts } from "@/lib/data/types";
 
 type Detail = Product & {
@@ -42,6 +44,11 @@ export default function ProductEditPage({ params }: { params: Promise<{ id: stri
   const [goldPrice, setGoldPrice] = useState<number | null>(null);
   const [silverPrice, setSilverPrice] = useState<number | null>(null);
   const [metalPriceLoading, setMetalPriceLoading] = useState(true);
+  const [overridePrompt, setOverridePrompt] = useState<{
+    id: string;
+    payload: Record<string, unknown>;
+    preview: OfferAssignmentPreview;
+  } | null>(null);
 
   const [formData, setFormData] = useState<{
     name: string;
@@ -85,6 +92,8 @@ export default function ProductEditPage({ params }: { params: Promise<{ id: stri
   const [imageUrls, setImageUrls] = useState<string[]>([]);
 
   const selectedOffer = offers.find(o => o.id === formData.offer_id);
+  const currentOffer = product?.offer_id ? offers.find((offer) => offer.id === product.offer_id) : null;
+  const replacesCurrentOffer = Boolean(product?.offer_id && formData.offer_id && product.offer_id !== formData.offer_id);
   const isMakingChargeOffer = selectedOffer?.discounts?.[0]?.discount_type === 'making_charge';
 
   const calculateEstimatedPrice = (): number => {
@@ -182,9 +191,12 @@ export default function ProductEditPage({ params }: { params: Promise<{ id: stri
     e.preventDefault();
     setSaving(true);
     setError(null);
+    let pendingId = "";
+    let pendingPayload: Record<string, unknown> | null = null;
 
     try {
       const id = (await params).id;
+      pendingId = id;
       const payload: Record<string, unknown> = {
         name: formData.name,
         category_id: formData.category_id || null,
@@ -207,12 +219,37 @@ export default function ProductEditPage({ params }: { params: Promise<{ id: stri
         certifications: formData.certifications || null,
         festival_id: formData.festival_id || null,
       };
+      pendingPayload = payload;
 
       console.log('[Frontend] Updating product payload:', JSON.stringify(payload, null, 2));
 
       await api.patch(`/api/admin/products/${id}`, payload);
       push("Product updated successfully.", "success");
       router.push(`/products/${id}`);
+    } catch (err) {
+      const preview = err instanceof ApiError ? readOfferAssignmentPreview(err.body) : null;
+      if (preview && pendingPayload && !overridePrompt) {
+        setOverridePrompt({ id: pendingId, payload: pendingPayload, preview });
+        return;
+      }
+      console.error('[Frontend] Product update error:', err);
+      setError(err instanceof ApiError ? err.message : "Failed to update product.");
+      push(err instanceof ApiError ? err.message : "Failed to update product.", "danger");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmOfferOverride() {
+    if (!overridePrompt || saving) return;
+    const pending = overridePrompt;
+    setOverridePrompt(null);
+    setSaving(true);
+    setError(null);
+    try {
+      await api.patch(`/api/admin/products/${pending.id}`, { ...pending.payload, confirmOverride: true });
+      push("Product updated successfully.", "success");
+      router.push(`/products/${pending.id}`);
     } catch (err) {
       console.error('[Frontend] Product update error:', err);
       setError(err instanceof ApiError ? err.message : "Failed to update product.");
@@ -649,6 +686,11 @@ export default function ProductEditPage({ params }: { params: Promise<{ id: stri
               </option>
             ))}
           </select>
+          {replacesCurrentOffer && (
+            <p className="mt-2 text-xs text-[var(--color-error)]" role="status">
+              This product currently has {currentOffer?.label ?? "another offer"}. Saving will replace that offer.
+            </p>
+          )}
         </div>
 
         <div>
@@ -681,6 +723,16 @@ export default function ProductEditPage({ params }: { params: Promise<{ id: stri
           </Button>
         </div>
       </form>
+      <ConfirmDialog
+        open={overridePrompt !== null}
+        title="Replace existing offer?"
+        description={overridePrompt ? formatOfferOverrideWarning(overridePrompt.preview.conflicts, overridePrompt.preview.byOffer) : ""}
+        confirmLabel="Replace offers"
+        onConfirm={() => void confirmOfferOverride()}
+        onCancel={() => {
+          if (!saving) setOverridePrompt(null);
+        }}
+      />
     </div>
   );
 }

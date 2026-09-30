@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/firebase-admin";
 import { getServiceClient } from "@/lib/supabase";
 import { recomputeOfferPrices } from "@/lib/offer-price-admin";
 import { removeOfferBannerImage } from "@/lib/offer-banner-admin";
+import { clearOfferAssignments } from "@/lib/offer-assignment-admin";
 import {
   badRequest,
   notFound,
@@ -89,11 +90,11 @@ export async function DELETE(
     .maybeSingle();
   if (bannerError) return serverError(bannerError);
 
-  const { error: clearError } = await supabase
-    .from("products")
-    .update({ offer_id: null, offer_price: null })
-    .eq("offer_id", id);
-  if (clearError) return serverError(clearError);
+  try {
+    await clearOfferAssignments(supabase, id);
+  } catch (clearError) {
+    return serverError(clearError);
+  }
 
   // Use Supabase RPC for transactional delete
   // This ensures all operations succeed or fail together
@@ -103,12 +104,6 @@ export async function DELETE(
     // Fallback to sequential operations if RPC doesn't exist
     // Clear references on products, then delete discounts attached to this offer,
     // then delete the offer itself.
-    const { error: clearErr } = await supabase
-      .from("products")
-      .update({ offer_id: null, offer_price: null })
-      .eq("offer_id", id);
-    if (clearErr) return serverError(clearErr);
-
     // Delete offer_banners before discounts (FK constraint)
     const { error: bannerErr } = await supabase
       .from("offer_banners")

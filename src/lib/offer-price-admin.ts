@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Discount, Offer } from "./data/types";
+import { applyOfferPriceItems, MAX_OFFER_ASSIGNMENT_ITEMS } from "./offer-assignment-admin";
 import {
   computeOfferPrice,
   computeOfferPriceUpdates,
@@ -10,7 +11,7 @@ type OfferContext = Pick<Offer, "is_active" | "start_date" | "end_date"> & {
   discounts: Discount[] | null;
 };
 
-const PRODUCT_PRICE_FIELDS = "id, price, price_auto_calculated, material_type, purity_carats, weight_grams, making_charge_type, making_charge_percent, making_charge_flat, gold_price_used, gst_percent";
+const PRODUCT_PRICE_FIELDS = "price, price_auto_calculated, material_type, purity_carats, weight_grams, making_charge_type, making_charge_percent, making_charge_flat, gold_price_used, gst_percent";
 
 export async function computeProductOfferPrice(
   supabase: SupabaseClient,
@@ -47,54 +48,82 @@ export async function recomputeOfferPrices(
   if (!offer) return { updated: 0, error: new Error("Offer not found") };
 
   const context = offer as OfferContext;
-  let updated = 0;
+  const updates: Array<{ id: string; offer_id: string; offer_price: number | null }> = [];
   for (let offset = 0; ; offset += 500) {
     const { data: products, error } = await supabase
       .from("products")
-      .select(PRODUCT_PRICE_FIELDS)
+      .select(`id, ${PRODUCT_PRICE_FIELDS}`)
       .eq("offer_id", offerId)
       .order("id")
       .range(offset, offset + 499);
-    if (error) return { updated, error };
+    if (error) return { updated: 0, error };
     if (!products?.length) break;
 
-    const updates = computeOfferPriceUpdates(
+    const priceUpdates = computeOfferPriceUpdates(
       products as Array<OfferPriceProduct & { id: string }>,
       context,
       context.discounts,
     );
-    const results = await Promise.all(updates.map(({ id, offer_price }) =>
-      supabase.from("products").update({ offer_price }).eq("id", id),
-    ));
-    const failed = results.find((result) => result.error)?.error;
-    if (failed) return { updated, error: failed };
-    updated += updates.length;
+    updates.push(...priceUpdates.map((item) => ({ ...item, offer_id: offerId })));
+    if (updates.length > MAX_OFFER_ASSIGNMENT_ITEMS) {
+      return { updated: 0, error: new Error(`Cannot recompute more than ${MAX_OFFER_ASSIGNMENT_ITEMS} products atomically`) };
+    }
     if (products.length < 500) break;
   }
-  return { updated, error: null };
+  try {
+    return { updated: await applyOfferPriceItems(supabase, updates), error: null };
+  } catch (error) {
+    return { updated: 0, error };
+  }
 }
 
 export async function recomputeAllOfferPrices(
   supabase: SupabaseClient,
 ): Promise<{ updated: number; error: unknown | null }> {
-  const offerIds = new Set<string>();
+  const products: Array<OfferPriceProduct & { id: string; offer_id: string }> = [];
   for (let offset = 0; ; offset += 500) {
     const { data, error } = await supabase
       .from("products")
-      .select("id, offer_id")
+      .select(`id, offer_id, ${PRODUCT_PRICE_FIELDS}`)
       .not("offer_id", "is", null)
       .order("id")
       .range(offset, offset + 499);
     if (error) return { updated: 0, error };
-    for (const product of data ?? []) offerIds.add(product.offer_id as string);
+    products.push(...((data ?? []) as Array<OfferPriceProduct & { id: string; offer_id: string }>));
+    if (products.length > MAX_OFFER_ASSIGNMENT_ITEMS) {
+      return { updated: 0, error: new Error(`Cannot recompute more than ${MAX_OFFER_ASSIGNMENT_ITEMS} products atomically`) };
+    }
     if (!data || data.length < 500) break;
   }
 
-  let updated = 0;
-  for (const offerId of offerIds) {
-    const result = await recomputeOfferPrices(supabase, offerId);
-    updated += result.updated;
-    if (result.error) return { updated, error: result.error };
+  if (!products.length) return { updated: 0, error: null };
+  const offerIds = [...new Set(products.map((product) => product.offer_id))];
+  const { data: offerData, error: offersError } = await supabase
+    .from("offers")
+    .select("id, is_active, start_date, end_date, discounts(id, offer_id, discount_type, value)")
+    .in("id", offerIds);
+  if (offersError) return { updated: 0, error: offersError };
+  const offersById = new Map<string, OfferContext>();
+  for (const value of offerData ?? []) {
+    const offer = value as OfferContext & { id: string };
+    offersById.set(offer.id, offer);
   }
-  return { updated, error: null };
+
+  const updates: Array<{ id: string; offer_id: string; offer_price: number | null }> = [];
+  for (const product of products) {
+    const offer = offersById.get(product.offer_id);
+    if (!offer) return { updated: 0, error: new Error(`Offer ${product.offer_id} not found`) };
+    updates.push({
+      id: product.id,
+      offer_id: product.offer_id,
+      offer_price: computeOfferPrice(product, offer, offer.discounts, {
+        metalPricePerGram: product.gold_price_used,
+      }),
+    });
+  }
+  try {
+    return { updated: await applyOfferPriceItems(supabase, updates), error: null };
+  } catch (error) {
+    return { updated: 0, error };
+  }
 }
