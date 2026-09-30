@@ -117,7 +117,7 @@ export default function ProductDetailPage() {
     );
   }
 
-  const discounted = resolveDiscounted(product.price, product.offer);
+  const discounted = resolveDiscounted(product.price, product.offer, product);
   const onSale = discounted != null;
 
   return (

@@ -25,6 +25,7 @@ type BannerDraft = {
 
 function formatDiscount(d: Discount | undefined): string {
   if (!d) return "—";
+  if (d.discount_type === "making_charge") return `Making charge: ${d.value}%`;
   return (d.discount_type === "percentage" || (d.discount_type as string) === "percent")
     ? `${d.value}% off`
     : `₹${d.value} off`;

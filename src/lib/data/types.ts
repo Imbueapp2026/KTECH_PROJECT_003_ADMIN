@@ -13,7 +13,7 @@ export type ProductStatus = "draft" | "published" | "archived";
 
 export type InquiryStatus = "new" | "contacted" | "resolved";
 
-export type DiscountType = "percentage" | "flat";
+export type DiscountType = "percentage" | "flat" | "making_charge";
 
 export interface Category {
   id: string;

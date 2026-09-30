@@ -27,7 +27,7 @@ export function ProductCard({
   href: string;
   onDelete?: (product: ProductCardData) => void;
 }) {
-  const discounted = resolveDiscounted(product.price, product.offer ?? null);
+  const discounted = resolveDiscounted(product.price, product.offer ?? null, product);
   const onSale = discounted != null;
   const cover = product.image_urls[0];
   const isArchived = product.status === "archived";

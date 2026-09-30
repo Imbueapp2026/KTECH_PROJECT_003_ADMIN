@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
@@ -15,7 +16,7 @@ export default function NewProductPage() {
   const router = useRouter();
   const { push } = useToast();
   const [categories, setCategories] = useState<Category[]>([]);
-  const [offers, setOffers] = useState<Offer[]>([]);
+  const [offers, setOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,18 +66,33 @@ export default function NewProductPage() {
       return calculateDirectPrice(parseFloat(formData.direct_price), parseFloat(formData.gst_percent));
     }
     const activePrice = formData.material_type === 'silver' ? silverPrice : goldPrice;
-    if (!activePrice || !formData.weight_grams || !formData.making_charge) return 0;
+    if (!activePrice || !formData.weight_grams) return 0;
     
+    let currentMakingCharge = parseFloat(formData.making_charge) || 0;
+    let currentMakingChargeType = formData.making_charge_type;
+
+    const selectedOffer = offers.find(o => o.id === formData.offer_id);
+    const offerDiscount = selectedOffer?.discounts?.[0];
+    if (offerDiscount?.discount_type === 'making_charge') {
+      currentMakingCharge = parseFloat(offerDiscount.value) || 0;
+      currentMakingChargeType = 'percent';
+    }
+
+    if (!currentMakingCharge) return 0;
+
     return calculateMetalPrice({
       metalPricePerGram: activePrice,
       purityCarats: formData.material_type === 'gold' ? formData.purity_carats : null,
       weightGrams: parseFloat(formData.weight_grams),
-      makingCharge: parseFloat(formData.making_charge),
-      makingChargeType: formData.making_charge_type,
+      makingCharge: currentMakingCharge,
+      makingChargeType: currentMakingChargeType,
       gstPercent: parseFloat(formData.gst_percent),
       materialType: formData.material_type,
     });
   };
+
+  const selectedOffer = offers.find(o => o.id === formData.offer_id);
+  const isMakingChargeOffer = selectedOffer?.discounts?.[0]?.discount_type === 'making_charge';
 
   useEffect(() => {
     async function loadData() {
@@ -429,13 +445,15 @@ export default function NewProductPage() {
 
           {formData.pricing_mode === "metal" && <div className="grid grid-cols-2 gap-4 mt-4">
             <div>
-              <label className="text-[11px] uppercase tracking-[0.06em] font-semibold text-[var(--color-ink-soft)] mb-1.5 block">
-                Making Charge Type
+              <label className="text-[11px] uppercase tracking-[0.06em] font-semibold text-[var(--color-ink-soft)] mb-1.5 flex items-center justify-between">
+                <span>Making Charge Type</span>
+                {isMakingChargeOffer && <Badge tone="new">Locked by Offer</Badge>}
               </label>
               <select
-                value={formData.making_charge_type}
+                value={isMakingChargeOffer ? 'percent' : formData.making_charge_type}
                 onChange={(e) => setFormData({ ...formData, making_charge_type: e.target.value as "percent" | "flat" })}
-                className="h-10 px-3 bg-[var(--color-primary)] border border-[var(--color-tertiary-soft)] rounded-[var(--radius-md)] text-sm text-[var(--color-ink)] focus:border-[var(--color-quaternary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-quaternary)]/20"
+                disabled={isMakingChargeOffer}
+                className="h-10 w-full px-3 bg-[var(--color-primary)] border border-[var(--color-tertiary-soft)] rounded-[var(--radius-md)] text-sm text-[var(--color-ink)] focus:border-[var(--color-quaternary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-quaternary)]/20 disabled:opacity-60"
               >
                 {MAKING_CHARGE_TYPES.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -446,19 +464,26 @@ export default function NewProductPage() {
             </div>
 
             <div>
-              <label className="text-[11px] uppercase tracking-[0.06em] font-semibold text-[var(--color-ink-soft)] mb-1.5 block">
-                Making Charge {formData.making_charge_type === 'percent' ? '(%)' : '(₹)'} <span className="text-[var(--color-error)]">*</span>
+              <label className="text-[11px] uppercase tracking-[0.06em] font-semibold text-[var(--color-ink-soft)] mb-1.5 flex items-center justify-between">
+                <span>Making Charge {isMakingChargeOffer ? '(%)' : formData.making_charge_type === 'percent' ? '(%)' : '(₹)'} <span className="text-[var(--color-error)]">*</span></span>
+                {isMakingChargeOffer && <Badge tone="new">Locked by Offer</Badge>}
               </label>
               <input
                 type="number"
                 step="0.01"
                 min="0"
-                value={formData.making_charge}
+                value={isMakingChargeOffer ? selectedOffer.discounts[0].value : formData.making_charge}
                 onChange={(e) => setFormData({ ...formData, making_charge: e.target.value })}
-                className="h-10 px-3 bg-[var(--color-primary)] border border-[var(--color-tertiary-soft)] rounded-[var(--radius-md)] text-sm text-[var(--color-ink)] focus:border-[var(--color-quaternary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-quaternary)]/20"
+                disabled={isMakingChargeOffer}
+                className="h-10 w-full px-3 bg-[var(--color-primary)] border border-[var(--color-tertiary-soft)] rounded-[var(--radius-md)] text-sm text-[var(--color-ink)] focus:border-[var(--color-quaternary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-quaternary)]/20 disabled:opacity-60"
                 placeholder={formData.making_charge_type === 'percent' ? '10' : '500'}
                 required={!formData.direct_price}
               />
+              {isMakingChargeOffer && (
+                <p className="text-[10px] text-[var(--color-tertiary)] mt-1">
+                  The active offer has overridden the making charge to {selectedOffer.discounts[0].value}%.
+                </p>
+              )}
             </div>
           </div>}
 

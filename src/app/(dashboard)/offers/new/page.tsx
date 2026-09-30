@@ -141,17 +141,26 @@ export default function NewOfferPage() {
             >
               <option value="percentage">Percentage</option>
               <option value="flat">Flat Amount</option>
+              <option value="making_charge">Making Charge Override</option>
             </select>
           </div>
 
           <div className="mt-4">
             <Input
-              label={formData.discount_type === "percentage" ? "Discount Value (%)" : "Discount Amount (₹)"}
+              label={
+                formData.discount_type === "percentage" ? "Discount Value (%)" :
+                formData.discount_type === "making_charge" ? "Making Charge Override (%)" :
+                "Discount Amount (₹)"
+              }
               type="number"
               step="0.01"
               value={formData.discount_value}
               onChange={(e) => setFormData({ ...formData, discount_value: e.target.value })}
-              placeholder={formData.discount_type === "percentage" ? "e.g., 10" : "e.g., 500"}
+              placeholder={
+                formData.discount_type === "percentage" ? "e.g., 10" :
+                formData.discount_type === "making_charge" ? "e.g., 9.99" :
+                "e.g., 500"
+              }
             />
           </div>
         </div>
