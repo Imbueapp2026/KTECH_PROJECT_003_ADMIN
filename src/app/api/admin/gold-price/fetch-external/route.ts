@@ -5,6 +5,7 @@
  */
 import { requireAdmin } from "@/lib/firebase-admin";
 import { getServiceClient } from "@/lib/supabase";
+import { recomputeAllOfferPrices } from "@/lib/offer-price-admin";
 import { unauthorized } from "@/lib/http";
 import { NextResponse } from "next/server";
 async function fetchGoldPriceFromAPI(): Promise<{ price: number; source: string; source_url: string } | null> {
@@ -116,6 +117,11 @@ export async function POST(req: Request) {
         { error: "Insert failed", details: error },
         { status: 500 }
       );
+    }
+
+    const offerPriceResult = await recomputeAllOfferPrices(supabase);
+    if (offerPriceResult.error) {
+      return NextResponse.json({ error: "Failed to update offer prices" }, { status: 500 });
     }
     
     // Get most recent price - use maybeSingle instead of single to avoid error

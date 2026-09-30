@@ -29,7 +29,9 @@ async function request<T>(
 ): Promise<T> {
   const token = await getIdToken().catch(() => null);
   const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json");
+  if (!(typeof FormData !== "undefined" && init.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
   const res = await fetch(path, { 
@@ -110,5 +112,7 @@ export const api = {
     request<T>(path, { method: "PATCH", body: JSON.stringify(data ?? {}) }),
   put: <T>(path: string, data?: unknown) =>
     request<T>(path, { method: "PUT", body: JSON.stringify(data ?? {}) }),
+  putFormData: <T>(path: string, data: FormData) =>
+    request<T>(path, { method: "PUT", body: data }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };

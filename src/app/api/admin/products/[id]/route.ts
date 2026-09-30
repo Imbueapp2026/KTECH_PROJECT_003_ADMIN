@@ -7,6 +7,7 @@
  */
 import { requireAdmin } from "@/lib/firebase-admin";
 import { getServiceClient } from "@/lib/supabase";
+import { removeOfferBannerImage } from "@/lib/offer-banner-admin";
 import {
   badRequest,
   notFound,
@@ -20,6 +21,7 @@ import {
   asUuid,
 } from "@/lib/http";
 import { calculateDirectPrice, calculateMetalPrice } from "@/lib/pricing";
+import { computeProductOfferPrice } from "@/lib/offer-price-admin";
 import type { Availability, ProductStatus } from "@/lib/data/types";
 
 const AVAILABILITY = ["available", "made_to_order", "sold"] as const;
@@ -57,6 +59,7 @@ interface ProductPatch {
   availability?: unknown;
   price?: unknown;
   offer_id?: unknown;
+  confirmOverride?: unknown;
   status?: unknown;
   image_urls?: unknown;
   // Gold pricing fields
@@ -123,7 +126,12 @@ export async function PATCH(
     }
   }
   if (body.offer_id !== undefined) {
-    patch.offer_id = body.offer_id == null ? null : asUuid(body.offer_id);
+    const offerId = body.offer_id == null || body.offer_id === "" ? null : asUuid(body.offer_id);
+    if (body.offer_id != null && body.offer_id !== "" && !offerId) return badRequest("offer_id invalid");
+    patch.offer_id = offerId;
+  }
+  if (body.confirmOverride !== undefined && typeof body.confirmOverride !== "boolean") {
+    return badRequest("confirmOverride must be boolean");
   }
   if (body.status !== undefined) {
     const v = asEnum<ProductStatus>(body.status, STATUS);
@@ -218,13 +226,37 @@ export async function PATCH(
   
   // Fetch current product to get existing values
   const supabase = getServiceClient();
-  const { data: currentProduct } = await supabase
+  const { data: currentProduct, error: currentProductError } = await supabase
     .from("products")
-    .select("price, price_auto_calculated, purity_carats, weight_grams, making_charge_percent, making_charge_flat, making_charge_type, gold_price_used, material_type, gst_percent")
+    .select("price, offer_id, price_auto_calculated, purity_carats, weight_grams, making_charge_percent, making_charge_flat, making_charge_type, gold_price_used, material_type, gst_percent")
     .eq("id", id)
     .single();
-  
+  if (currentProductError) {
+    if (currentProductError.code === "PGRST116") return notFound();
+    return serverError(currentProductError);
+  }
   if (!currentProduct) return notFound();
+
+  const nextOfferId = (patch.offer_id === undefined ? currentProduct.offer_id : patch.offer_id) as string | null;
+  if (nextOfferId && currentProduct.offer_id && nextOfferId !== currentProduct.offer_id) {
+    const { data: currentOffer, error: offerError } = await supabase
+      .from("offers")
+      .select("id, label")
+      .eq("id", currentProduct.offer_id)
+      .maybeSingle();
+    if (offerError) return serverError(offerError);
+    if (body.confirmOverride !== true) {
+      return Response.json({
+        conflicts: 1,
+        productCount: 1,
+        byOffer: [{
+          offerId: currentProduct.offer_id,
+          label: currentOffer?.label ?? currentProduct.offer_id,
+          productCount: 1,
+        }],
+      }, { status: 409 });
+    }
+  }
   
   // Always recalculate price if product has required gold pricing fields
   const purity = (patch.purity_carats ?? currentProduct.purity_carats) as 24 | 22 | 18 | 14 | 9 | null;
@@ -294,6 +326,14 @@ export async function PATCH(
     patch.price_auto_calculated = true;
     patch.gst_percent = gstPercent;
   }
+
+  const offerPriceResult = await computeProductOfferPrice(supabase, {
+    ...currentProduct,
+    ...patch,
+    price: (patch.price ?? currentProduct.price) as number,
+  }, nextOfferId);
+  if (offerPriceResult.error) return serverError(offerPriceResult.error);
+  patch.offer_price = offerPriceResult.data;
   
   patch.updated_at = new Date().toISOString();
 
@@ -336,11 +376,23 @@ export async function DELETE(
   if (!asUuid(id)) return badRequest("invalid id");
 
   const supabase = getServiceClient();
+  const { data: banners, error: bannerFetchError } = await supabase
+    .from("offer_banners")
+    .select("image_url")
+    .eq("product_id", id);
+  if (bannerFetchError) return serverError(bannerFetchError);
+
   const { error: bannerError } = await supabase
     .from("offer_banners")
     .delete()
     .eq("product_id", id);
   if (bannerError) return serverError(bannerError);
+
+  try {
+    await Promise.all((banners ?? []).map((banner) => removeOfferBannerImage(supabase, banner.image_url)));
+  } catch (storageError) {
+    return serverError(storageError);
+  }
 
   const { data, error } = await supabase
     .from("products")

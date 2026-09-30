@@ -97,3 +97,17 @@ The project is a lead-generation and showcase website for Avirat Jewelers, a loc
 ```
 
 ---
+
+### [2026-09-30] Repair admin offer-banner persistence
+**Agent:** GitHub Copilot
+**Files/areas touched:** `src/app/(dashboard)/offers/page.tsx`, admin offer/banner and product delete routes, `src/lib/api.ts`, offer-banner helpers and tests, `DB_CHANGES.sql`
+
+The offer-banner editor now submits its selected file and banner fields together to the authenticated banner route instead of uploading first through the generic product-image endpoint. The server validates the image type and 5 MB limit, validates the offer and selected published product, uploads under an offer-specific path, and upserts the public Storage URL on `offer_id` with a fresh `updated_at`. A failed database write triggers cleanup of the new object; replacement, banner removal, offer removal, and product-linked banner removal clean up stored objects using a URL-origin and bucket-path guard. The editor previews a pending local image, disables Save during submission, and updates its saved preview only after the server returns the row. `DB_CHANGES.sql` contains manual bucket and object policy SQL only; it was not run. Mocked-Supabase tests use Node's built-in runner because this checkout has no installed Vitest executable and adding dependencies was prohibited. Baseline lint, typecheck, and build passed; the build emitted pre-existing Firebase invalid-key diagnostics. This does not prove access to the real bucket: the developer must apply the SQL manually and perform the requested browser test. Existing offer-pricing edits were preserved on the branch and remain backed up in the named stash.
+
+---
+
+### [2026-09-30] Enforce offer assignment rules
+**Agent:** GitHub Copilot
+**Files/areas touched:** `DB_CHANGES.sql`, admin offer assignment routes and editor, product edit route/UI, offer price computation/recomputation helpers, Vercel cron configuration, `.env.example`, mocked tests
+
+Offer assignment now computes a complete product-price plan and replacement-conflict summary before any write. All and selected-product requests return a preview without mutation until `confirmOverride` is true; confirmed changes use the service-role-only `apply_offer_prices(jsonb)` function, whose one `UPDATE ... FROM jsonb_to_recordset` runs as a single transaction. Batches above 5,000 products fail before writing rather than being split into partial transactions. The offer editor now supports selected products, per-product replacement warnings, and confirmation dialogs; the product editor enforces the same conflict check on the server. Repricing on offer/discount/product/rate changes now uses the same atomic function, and a daily authenticated Vercel job re-evaluates date-gated offer prices so future starts and expirations are reflected. The existing TypeScript formula remains shared with admin display code, with the end-date comparison aligned to the requested strict boundary. The SQL was added for manual execution only; no database, migration, or production bucket was touched. Vitest is absent and dependencies were not added, so 13 assignment tests ran using Node's built-in runner and mocked Supabase behavior. Production database behavior remains unproven until the developer applies `DB_CHANGES.sql` and tests in the admin environment; the cron requires `CRON_SECRET` to be configured in deployment.

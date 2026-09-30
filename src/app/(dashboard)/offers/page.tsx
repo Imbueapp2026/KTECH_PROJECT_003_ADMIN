@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ProductGrid } from "@/components/products/ProductGrid";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { saveBannerWithFeedback } from "@/lib/offer-banner-ui";
+import { formatOfferAssignmentConfirmation, type OfferAssignmentPreview } from "@/lib/offer-assignment-ui";
 import type {
   Category,
   Discount,
@@ -14,14 +17,36 @@ import type {
   ProductJoined,
   Product,
   Festival,
+  OfferBanner,
 } from "@/lib/data/types";
 
 type BannerDraft = {
-  image_url: string;
+  product_id: string | null;
   alt_text: string;
   is_active: boolean;
   display_order: number;
 };
+
+type PendingOfferAssignment = {
+  offer: OfferWithDiscounts;
+  scope: "all" | "selected";
+  productIds: string[] | null;
+  preview: OfferAssignmentPreview;
+};
+
+async function loadAllAdminProducts(): Promise<Product[]> {
+  const first = await api.get<{
+    data: Product[];
+    pagination: { limit: number; total: number };
+  }>("/api/admin/products?limit=100");
+  const pageCount = Math.ceil(first.pagination.total / first.pagination.limit);
+  const remaining = await Promise.all(
+    Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
+      api.get<{ data: Product[] }>(`/api/admin/products?page=${index + 2}&limit=100`),
+    ),
+  );
+  return [first.data, ...remaining.map((page) => page.data)].flat();
+}
 
 function formatDiscount(d: Discount | undefined): string {
   if (!d) return "—";
@@ -39,6 +64,8 @@ export default function OffersPage() {
   const [error, setError] = useState<string | null>(null);
   const [deletingOfferId, setDeletingOfferId] = useState<string | null>(null);
   const [bulkActionOfferId, setBulkActionOfferId] = useState<string | null>(null);
+  const [selectedProductIds, setSelectedProductIds] = useState<Record<string, string[]>>({});
+  const [pendingAssignment, setPendingAssignment] = useState<PendingOfferAssignment | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,7 +73,7 @@ export default function OffersPage() {
       try {
         const [off, prod, cat, fest] = await Promise.all([
           api.get<{ data: OfferWithDiscounts[] }>("/api/admin/offers"),
-          api.get<{ data: Product[] }>("/api/admin/products"),
+          loadAllAdminProducts(),
           api.get<{ data: Category[] }>("/api/admin/categories"),
           api.get<{ data: Festival[] }>("/api/admin/festivals"),
         ]);
@@ -61,15 +88,11 @@ export default function OffersPage() {
         const offerById = new Map(
           off.data.map((o) => [o.id, { ...o, discount: o.discounts?.[0] ?? null }]),
         );
-        setProducts(
-          prod.data
-            .filter((p) => p.offer_id)
-            .map((row) => ({
-              ...row,
-              category: catById.get(row.category_id) ?? null,
-              offer: offerById.get(row.offer_id!) ?? null,
-            })),
-        );
+        setProducts(prod.map((row) => ({
+          ...row,
+          category: catById.get(row.category_id) ?? null,
+          offer: row.offer_id ? offerById.get(row.offer_id) ?? null : null,
+        })));
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof ApiError ? err.message : "Failed to load.");
@@ -82,37 +105,76 @@ export default function OffersPage() {
     };
   }, []);
 
-  async function applyOfferToAllProducts(offer: OfferWithDiscounts) {
-    if (!window.confirm(`Apply "${offer.label}" to ALL products? This will override any existing offer on those products.`)) return;
+  async function persistOfferAssignment(pending: PendingOfferAssignment) {
+    const path = pending.scope === "all"
+      ? `/api/admin/offers/${pending.offer.id}/apply-all`
+      : `/api/admin/offers/${pending.offer.id}/apply-selected`;
+    const body = pending.scope === "all"
+      ? { confirmOverride: true }
+      : { productIds: pending.productIds, confirmOverride: true };
+    const result = await api.post<{ updated: number }>(path, body);
+    push(`Offer applied to ${result.updated} products.`, "success");
+    if (pending.scope === "selected") {
+      setSelectedProductIds((current) => ({ ...current, [pending.offer.id]: [] }));
+    }
+    try {
+      const refreshed = await loadAllAdminProducts();
+      const categoryById = new Map((products ?? []).map((product) => [product.category_id, product.category]));
+      const offerById = new Map((offers ?? []).map((offer) => [offer.id, { ...offer, discount: offer.discounts?.[0] ?? null }]));
+      setProducts(refreshed.map((row) => ({
+        ...row,
+        category: categoryById.get(row.category_id) ?? null,
+        offer: row.offer_id ? offerById.get(row.offer_id) ?? null : null,
+      })));
+    } catch {
+      push("Offer applied, but the product list could not be refreshed.", "danger");
+    }
+  }
+
+  async function previewOfferAssignment(
+    offer: OfferWithDiscounts,
+    scope: "all" | "selected",
+    productIds: string[] | null = null,
+  ) {
     setBulkActionOfferId(offer.id);
     try {
-      const res = await api.post<{ ok: boolean; updated: number }>(`/api/admin/offers/${offer.id}/apply-all`, {});
-      push(`Offer applied to ${res.updated} products.`, "success");
-      // refresh product list
-      const [prod, cat] = await Promise.all([
-        api.get<{ data: Product[] }>("/api/admin/products"),
-        api.get<{ data: Category[] }>("/api/admin/categories"),
-      ]);
-      const offerById = new Map(
-        (offers ?? []).map((o) => [o.id, { ...o, discount: o.discounts?.[0] ?? null }]),
+      const path = scope === "all"
+        ? `/api/admin/offers/${offer.id}/apply-all`
+        : `/api/admin/offers/${offer.id}/apply-selected`;
+      const preview = await api.post<OfferAssignmentPreview>(
+        path,
+        scope === "all" ? {} : { productIds },
       );
-      const catById = new Map(prod.data.map ? prod.data.map((p: Product) => [p.category_id, null]) : []);
-      void catById; // just refresh products list
-      const catMap = new Map(cat.data.map((c: Category) => [c.id, c]));
-      setProducts(
-        prod.data
-          .filter((p: Product) => p.offer_id)
-          .map((row: Product) => ({
-            ...row,
-            category: catMap.get(row.category_id) ?? null,
-            offer: offerById.get(row.offer_id!) ?? null,
-          }))
-      );
+      const pending = { offer, scope, productIds, preview } satisfies PendingOfferAssignment;
+      if (scope === "all" || preview.conflicts > 0) setPendingAssignment(pending);
+      else await persistOfferAssignment(pending);
     } catch (err) {
-      push(err instanceof ApiError ? err.message : "Failed to apply offer to all products.", "danger");
+      push(err instanceof ApiError ? err.message : "Failed to apply offer.", "danger");
     } finally {
       setBulkActionOfferId(null);
     }
+  }
+
+  async function confirmPendingAssignment() {
+    if (!pendingAssignment || bulkActionOfferId) return;
+    setBulkActionOfferId(pendingAssignment.offer.id);
+    try {
+      await persistOfferAssignment(pendingAssignment);
+      setPendingAssignment(null);
+    } catch (err) {
+      push(err instanceof ApiError ? err.message : "Failed to apply offer.", "danger");
+    } finally {
+      setBulkActionOfferId(null);
+    }
+  }
+
+  function toggleSelectedProduct(offerId: string, productId: string, checked: boolean) {
+    setSelectedProductIds((current) => {
+      const next = new Set(current[offerId] ?? []);
+      if (checked) next.add(productId);
+      else next.delete(productId);
+      return { ...current, [offerId]: [...next] };
+    });
   }
 
   async function removeOfferFromAllProducts(offer: OfferWithDiscounts) {
@@ -162,34 +224,22 @@ export default function OffersPage() {
     }
   }
 
-  async function uploadBannerImage(offerId: string, file: File): Promise<string> {
-    try {
-      const formData = new FormData();
-      formData.append("files", file);
-      const token = await (await import("@/lib/auth/get-token")).getIdToken().catch(() => null);
-      const response = await fetch("/api/admin/products/upload", {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body: formData,
-      });
-      const result = await response.json();
-      if (!response.ok || !result.urls?.[0]) throw new Error(result.error ?? "Banner image upload failed.");
-      
-      return result.urls[0];
-    } catch (err: unknown) {
-      push(err instanceof Error ? err.message : "Failed to upload banner.", "danger");
-      throw err;
-    }
-  }
+  async function saveBanner(offer: OfferWithDiscounts, draft: BannerDraft, file: File | null) {
+    const formData = new FormData();
+    formData.append("product_id", draft.product_id ?? "");
+    formData.append("alt_text", draft.alt_text);
+    formData.append("is_active", String(draft.is_active));
+    formData.append("display_order", String(draft.display_order));
+    if (file) formData.append("file", file);
 
-  async function saveBanner(offer: OfferWithDiscounts, draft: BannerDraft) {
-    try {
-      const response = await api.put<{ data: OfferWithDiscounts["offer_banners"][number] }>(`/api/admin/offers/${offer.id}/banner`, draft);
-      setOffers((current) => current?.map((item) => item.id === offer.id ? { ...item, offer_banners: [response.data] } : item) ?? null);
-      push("Offer banner saved.", "success");
-    } catch (err) {
-      push(err instanceof ApiError ? err.message : "Failed to save offer banner.", "danger");
-    }
+    return saveBannerWithFeedback(
+      () => api.putFormData<OfferBanner>(`/api/admin/offers/${offer.id}/banner`, formData),
+      (saved) => {
+        setOffers((current) => current?.map((item) => item.id === offer.id ? { ...item, offer_banners: [saved] } : item) ?? null);
+        push("Offer banner saved.", "success");
+      },
+      (err) => push(err instanceof ApiError ? err.message : "Failed to save offer banner.", "danger"),
+    );
   }
 
   async function deleteBanner(offerId: string) {
@@ -312,7 +362,7 @@ export default function OffersPage() {
                   size="sm"
                   variant="ghost"
                   disabled={bulkActionOfferId === o.id}
-                  onClick={() => void applyOfferToAllProducts(o)}
+                  onClick={() => void previewOfferAssignment(o, "all")}
                 >
                   {bulkActionOfferId === o.id ? "Applying..." : "Apply to All Products"}
                 </Button>
@@ -347,10 +397,18 @@ export default function OffersPage() {
                 {o.description}
               </p>
             )}
+            <OfferProductSelector
+              offer={o}
+              products={products}
+              selectedIds={selectedProductIds[o.id] ?? []}
+              disabled={bulkActionOfferId === o.id}
+              onToggle={(productId, checked) => toggleSelectedProduct(o.id, productId, checked)}
+              onApply={(productIds) => previewOfferAssignment(o, "selected", productIds)}
+            />
             <OfferBannerEditor
               key={`${o.id}-${o.offer_banners?.[0]?.id ?? 'nobanner'}`}
               offer={o}
-              onUpload={uploadBannerImage}
+              products={inOffer.filter((product) => product.status === "published")}
               onSave={saveBanner}
               onDelete={deleteBanner}
             />
@@ -378,42 +436,141 @@ export default function OffersPage() {
           </section>
         );
       })}
+      <ConfirmDialog
+        open={pendingAssignment !== null}
+        title={pendingAssignment?.preview.conflicts ? "Replace existing offers?" : "Apply offer?"}
+        description={pendingAssignment ? formatOfferAssignmentConfirmation(pendingAssignment.scope, pendingAssignment.offer.label, pendingAssignment.preview) : ""}
+        confirmLabel={pendingAssignment?.preview.conflicts ? "Replace offers" : "Apply offer"}
+        onConfirm={() => void confirmPendingAssignment()}
+        onCancel={() => {
+          if (!bulkActionOfferId) setPendingAssignment(null);
+        }}
+      />
     </div>
+  );
+}
+
+function OfferProductSelector({
+  offer,
+  products,
+  selectedIds,
+  disabled,
+  onToggle,
+  onApply,
+}: {
+  offer: OfferWithDiscounts;
+  products: ProductJoined[] | null;
+  selectedIds: string[];
+  disabled: boolean;
+  onToggle: (productId: string, checked: boolean) => void;
+  onApply: (productIds: string[]) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const allProducts = products ?? [];
+  const selected = new Set(selectedIds);
+  const visible = allProducts
+    .filter((product) => product.name.toLowerCase().includes(search.toLowerCase()))
+    .slice(0, 100);
+
+  return (
+    <details className="border-b border-[var(--color-tertiary-soft)]">
+      <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-[var(--color-ink)]">
+        Apply to selected products {selectedIds.length > 0 ? `(${selectedIds.length} selected)` : ""}
+      </summary>
+      <div className="px-5 pb-4">
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search products"
+          aria-label={`Search products to apply ${offer.label} to`}
+          className="h-9 w-full max-w-md rounded-[var(--radius-sm)] border border-[var(--color-tertiary-soft)] bg-[var(--color-primary)] px-3 text-sm text-[var(--color-ink)]"
+        />
+        <div className="mt-3 max-h-64 overflow-y-auto border-y border-[var(--color-tertiary-soft)]">
+          {visible.map((product) => {
+            const checked = selected.has(product.id);
+            const replacesOffer = checked && product.offer_id && product.offer_id !== offer.id;
+            return (
+              <div key={product.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--color-tertiary-soft)]/60 px-2 py-2 last:border-0">
+                <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-[var(--color-ink)]">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={disabled}
+                    onChange={(event) => onToggle(product.id, event.target.checked)}
+                    className="h-4 w-4 shrink-0 rounded border-[var(--color-tertiary-soft)] text-[var(--color-quaternary)]"
+                  />
+                  <span className="truncate">{product.name}</span>
+                </label>
+                {product.offer && <span className="text-xs text-[var(--color-tertiary)]">{product.offer.label}</span>}
+                {replacesOffer && (
+                  <p className="basis-full pl-6 text-xs text-[var(--color-error)]" role="status">
+                    Currently assigned to {product.offer?.label ?? "another offer"}; selecting this will replace it.
+                  </p>
+                )}
+              </div>
+            );
+          })}
+          {visible.length === 0 && <p className="px-2 py-4 text-sm text-[var(--color-tertiary)]">No products match.</p>}
+          {visible.length === 100 && <p className="px-2 py-2 text-xs text-[var(--color-tertiary)]">Refine the search to see more matches.</p>}
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <span className="text-xs text-[var(--color-tertiary)]">{selectedIds.length} selected</span>
+          <Button size="sm" disabled={disabled || selectedIds.length === 0} onClick={() => onApply(selectedIds)}>
+            Apply to selected
+          </Button>
+        </div>
+      </div>
+    </details>
   );
 }
 
 function OfferBannerEditor({
   offer,
-  onUpload,
+  products,
   onSave,
   onDelete,
 }: {
   offer: OfferWithDiscounts;
-  onUpload: (offerId: string, file: File) => Promise<string>;
-  onSave: (offer: OfferWithDiscounts, draft: BannerDraft) => Promise<void>;
+  products: ProductJoined[];
+  onSave: (offer: OfferWithDiscounts, draft: BannerDraft, file: File | null) => Promise<OfferBanner | null>;
   onDelete: (offerId: string) => Promise<void>;
 }) {
   const banner = offer.offer_banners?.[0];
   const [draft, setDraft] = useState<BannerDraft>({
-    image_url: banner?.image_url ?? "",
+    product_id: banner?.product_id ?? null,
     alt_text: banner?.alt_text ?? `${offer.label} offer`,
     is_active: banner?.is_active ?? true,
     display_order: banner?.display_order ?? 0,
   });
-  const [uploading, setUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  async function handleFile(file: File | undefined) {
-    if (!file) return;
-    setUploading(true);
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  async function handleSave() {
+    if (saving) return;
+    setSaving(true);
     try {
-      const url = await onUpload(offer.id, file);
-      setDraft((current) => ({ ...current, image_url: url }));
-    } catch {
-      // Upload error is handled by the parent
+      const saved = await onSave(offer, draft, selectedFile);
+      if (!saved) return;
+      setDraft({
+        product_id: saved.product_id,
+        alt_text: saved.alt_text,
+        is_active: saved.is_active,
+        display_order: saved.display_order,
+      });
+      setSelectedFile(null);
+      setPreviewUrl(null);
     } finally {
-      setUploading(false);
+      setSaving(false);
     }
   }
+
+  const imageUrl = previewUrl ?? banner?.image_url;
 
   return (
     <div className="border-b border-[var(--color-tertiary-soft)] bg-[var(--color-surface-muted)]/30 px-4 py-5 sm:px-5">
@@ -438,10 +595,10 @@ function OfferBannerEditor({
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:items-start">
         <div className="relative aspect-[16/7] min-h-[150px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-tertiary-soft)] bg-[var(--color-surface-sunken)]">
-          {draft.image_url && draft.image_url !== "pending" ? (
+          {imageUrl ? (
             <Image
-              src={draft.image_url}
-              alt="Current offer banner preview"
+              src={imageUrl}
+              alt={draft.alt_text}
               fill
               unoptimized
               sizes="(max-width: 1024px) 100vw, 50vw"
@@ -452,9 +609,9 @@ function OfferBannerEditor({
               Choose an image to preview the banner here.
             </div>
           )}
-          {uploading && (
+          {saving && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-xs font-medium text-white">
-              Uploading image...
+              Saving banner...
             </div>
           )}
         </div>
@@ -474,14 +631,38 @@ function OfferBannerEditor({
           </label>
 
           <label className="flex cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border border-dashed border-[var(--color-quaternary)]/60 px-4 py-2.5 text-sm font-medium text-[var(--color-quaternary)] transition-colors hover:bg-[var(--color-quaternary-soft)]">
-            {uploading ? "Uploading..." : draft.image_url ? "Replace banner image" : "Choose banner image"}
+            {selectedFile ? "Choose a different image" : imageUrl ? "Replace banner image" : "Choose banner image"}
             <input
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
+              accept="image/jpeg,image/png,image/webp"
               className="sr-only"
-              disabled={uploading}
-              onChange={(e) => void handleFile(e.target.files?.[0])}
+              disabled={saving}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  setSelectedFile(file);
+                  setPreviewUrl(URL.createObjectURL(file));
+                }
+                e.currentTarget.value = "";
+              }}
             />
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] uppercase tracking-[0.06em] font-semibold text-[var(--color-ink-soft)]">
+              Target product
+            </span>
+            <select
+              value={draft.product_id ?? ""}
+              disabled={saving}
+              onChange={(e) => setDraft({ ...draft, product_id: e.target.value || null })}
+              className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-tertiary-soft)] bg-[var(--color-primary)] px-3 text-sm text-[var(--color-ink)] focus:border-[var(--color-quaternary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-quaternary)]/20"
+            >
+              <option value="">All products in this offer</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>{product.name}</option>
+              ))}
+            </select>
           </label>
 
           <label className="flex items-center gap-2 text-sm text-[var(--color-ink)]">
@@ -496,10 +677,10 @@ function OfferBannerEditor({
 
           <Button
             className="w-full"
-            disabled={!draft.image_url || draft.image_url === "pending" || !draft.alt_text || uploading}
-            onClick={() => void onSave(offer, draft)}
+            disabled={(!imageUrl && !selectedFile) || !draft.alt_text.trim() || saving}
+            onClick={() => void handleSave()}
           >
-            Save banner
+            {saving ? "Saving..." : "Save banner"}
           </Button>
         </div>
       </div>

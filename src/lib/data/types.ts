@@ -61,6 +61,7 @@ export interface Product {
   hallmark_certified: boolean;
   availability: Availability;
   price: number;
+  offer_price?: number | null;
   offer_id: string | null;
   status: ProductStatus;
   image_urls: string[];
