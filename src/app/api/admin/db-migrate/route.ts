@@ -6,7 +6,7 @@
  */
 import { requireAdmin } from "@/lib/firebase-admin";
 import { getServiceClient } from "@/lib/supabase";
-import { badRequest, serverError, unauthorized } from "@/lib/http";
+import { badRequest, unauthorized } from "@/lib/http";
 
 export async function POST(req: Request) {
   if (!(await requireAdmin(req))) return unauthorized();

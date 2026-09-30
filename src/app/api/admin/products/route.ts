@@ -239,7 +239,7 @@ export async function POST(req: Request) {
       const makingCharge = making_charge_type === 'percent' ? making_charge_percent : making_charge_flat;
       finalPrice = calculateMetalPrice({
         metalPricePerGram: usedMetalPrice,
-        purityCarats: purity_carats || 24, // Default to 24K for silver
+        purityCarats: material_type === 'gold' ? (purity_carats || 22) : null,
         weightGrams: weight_grams || 0,
         makingCharge: makingCharge!,
         makingChargeType: making_charge_type as 'percent' | 'flat',

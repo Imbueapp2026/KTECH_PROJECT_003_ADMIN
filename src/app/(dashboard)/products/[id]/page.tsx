@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { formatPrice, formatWeight, resolveDiscounted } from "@/lib/utils";
+import { calculatePriceBreakdown } from "@/lib/pricing";
 import type {
   Category,
   Discount,
@@ -128,12 +129,38 @@ export default function ProductDetailPage() {
   })();
   const isMakingChargeOffer = activeDiscount?.discount_type === 'making_charge';
 
+  const breakdown = calculatePriceBreakdown({
+    price: product.price,
+    materialType: product.material_type,
+    purityCarats: product.purity_carats,
+    weightGrams: product.weight_grams,
+    makingChargeType: product.making_charge_type,
+    makingChargePercent: product.making_charge_percent,
+    makingChargeFlat: product.making_charge_flat,
+    goldPriceUsed: product.gold_price_used,
+    gstPercent: product.gst_percent,
+    priceAutoCalculated: product.price_auto_calculated,
+  });
+
+  const offerBreakdown = onSale && discounted != null ? calculatePriceBreakdown({
+    price: discounted,
+    materialType: product.material_type,
+    purityCarats: product.purity_carats,
+    weightGrams: product.weight_grams,
+    makingChargeType: isMakingChargeOffer ? 'percent' : product.making_charge_type,
+    makingChargePercent: isMakingChargeOffer ? activeDiscount?.value : product.making_charge_percent,
+    makingChargeFlat: isMakingChargeOffer ? null : product.making_charge_flat,
+    goldPriceUsed: product.gold_price_used,
+    gstPercent: product.gst_percent,
+    priceAutoCalculated: product.price_auto_calculated,
+  }) : null;
+
   function formatDiscountLabel(d: Discount | null): string {
     if (!d) return '';
     const t = d.discount_type as DiscountType;
-    if (t === 'percentage' || t as string === 'percent') return `${d.value}% off total price`;
+    if (t === 'percentage' || (t as string) === 'percent') return `${d.value}% off total price`;
     if (t === 'flat') return `₹${d.value} flat off`;
-    if (t === 'making_charge') return `Making charge reduced to ${d.value}%`;
+    if (t === 'making_charge') return `Making charge: ${d.value}%`;
     return `${d.value}`;
   }
 
@@ -263,16 +290,26 @@ export default function ProductDetailPage() {
                   {product.offer.description && (
                     <p className="text-xs text-[var(--color-ink-soft)] mt-1">{product.offer.description}</p>
                   )}
+                  {!onSale && (
+                    <p className="text-xs text-[var(--color-ink-soft)] mt-1.5 italic">
+                      This product already has a lower rate than this offer, so the normal price is retained.
+                    </p>
+                  )}
                 </div>
                 <Badge tone={onSale ? "new" : "neutral"}>
-                  {onSale ? formatDiscountLabel(activeDiscount) : product.offer.label}
+                  {onSale ? formatDiscountLabel(activeDiscount) : "Offer Linked"}
                 </Badge>
               </div>
               {onSale && (
-                <div className="mt-3 pt-3 border-t border-[var(--color-quaternary)]/20 flex items-baseline gap-2">
-                  <span className="text-xs text-[var(--color-tertiary)]">Offer price:</span>
-                  <span className="text-base font-semibold text-[var(--color-quaternary)]">{formatPrice(discounted!)}</span>
-                  <span className="text-xs text-[var(--color-tertiary)] line-through">{formatPrice(product.price)}</span>
+                <div className="mt-3 pt-3 border-t border-[var(--color-quaternary)]/20 flex items-baseline justify-between">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs text-[var(--color-tertiary)]">Offer price:</span>
+                    <span className="text-base font-semibold text-[var(--color-quaternary)]">{formatPrice(discounted!)}</span>
+                    <span className="text-xs text-[var(--color-tertiary)] line-through">{formatPrice(product.price)}</span>
+                  </div>
+                  <span className="text-xs font-semibold text-[var(--color-success)]">
+                    Save {formatPrice(product.price - discounted!)}
+                  </span>
                 </div>
               )}
             </div>
@@ -323,28 +360,28 @@ export default function ProductDetailPage() {
               )}
               <dt className="text-[var(--color-tertiary)]">Making Charge</dt>
               <dd className="font-medium">
-                {isMakingChargeOffer ? (
+                {isMakingChargeOffer && onSale ? (
                   <span className="flex items-center gap-1.5">
                     <span className="line-through text-[var(--color-tertiary)]">
                       {product.making_charge_type === 'percent' && product.making_charge_percent
                         ? `${product.making_charge_percent}%`
                         : product.making_charge_type === 'flat' && product.making_charge_flat
-                        ? `₹${product.making_charge_flat}`
+                        ? formatPrice(product.making_charge_flat)
                         : '—'}
                     </span>
                     <Badge tone="new">{activeDiscount?.value}% (offer)</Badge>
                   </span>
                 ) : (
                   product.making_charge_type === 'percent' && product.making_charge_percent
-                    ? `${product.making_charge_percent}% of gold value`
+                    ? `${product.making_charge_percent}% of metal value`
                     : product.making_charge_type === 'flat' && product.making_charge_flat
-                    ? `₹${formatPrice(product.making_charge_flat)} flat`
+                    ? `${formatPrice(product.making_charge_flat)} flat`
                     : '—'
                 )}
               </dd>
-              <dt className="text-[var(--color-tertiary)]">Gold Price Used</dt>
+              <dt className="text-[var(--color-tertiary)]">Metal Price Used</dt>
               <dd className="font-medium">
-                {product.gold_price_used ? `₹${product.gold_price_used.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/gram` : "—"}
+                {product.gold_price_used ? `${formatPrice(product.gold_price_used)}/g` : "—"}
               </dd>
               {product.certifications && (
                 <>
@@ -357,37 +394,47 @@ export default function ProductDetailPage() {
 
           {/* Price Breakdown */}
           <div className="bg-[var(--color-quaternary-soft)]/40 border border-[var(--color-quaternary)]/20 rounded-[var(--radius-md)] p-5">
-            <p className="text-[10px] uppercase tracking-[0.08em] font-semibold text-[var(--color-quaternary)] mb-3">
-              Price Breakdown
-            </p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] uppercase tracking-[0.08em] font-semibold text-[var(--color-quaternary)]">
+                Price Breakdown
+              </p>
+              {onSale && (
+                <Badge tone="new">Offer Applied</Badge>
+              )}
+            </div>
             <div className="space-y-2 text-sm">
-              {product.price_auto_calculated === false ? (
+              {!breakdown.isAuto ? (
                 <div className="flex justify-between">
                   <span className="text-[var(--color-tertiary)]">Direct Price</span>
                   <span className="font-medium">
-                    {product.gst_percent != null
-                      ? formatPrice(product.price / (1 + product.gst_percent / 100))
-                      : formatPrice(product.price)}
+                    {formatPrice(breakdown.basePrice)}
                   </span>
                 </div>
               ) : (
                 <>
                   <div className="flex justify-between">
-                    <span className="text-[var(--color-tertiary)]">Gold Value</span>
+                    <span className="text-[var(--color-tertiary)]">
+                      {breakdown.materialType === 'silver' ? 'Silver Value' : 'Gold Value'}
+                    </span>
                     <span className="font-medium">
-                      {product.purity_carats && product.weight_grams && product.gold_price_used
-                        ? formatPrice(product.purity_carats / 24 * product.weight_grams * product.gold_price_used)
-                        : "—"}
+                      {formatPrice(breakdown.metalValue)}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[var(--color-tertiary)]">Making Charge</span>
                     <span className="font-medium">
-                      {product.making_charge_type === 'percent' && product.making_charge_percent && product.purity_carats && product.weight_grams && product.gold_price_used
-                        ? formatPrice((product.purity_carats / 24 * product.weight_grams * product.gold_price_used) * (product.making_charge_percent / 100))
-                        : product.making_charge_type === 'flat' && product.making_charge_flat
-                        ? formatPrice(product.making_charge_flat)
-                        : "—"}
+                      {onSale && offerBreakdown && isMakingChargeOffer ? (
+                        <span className="flex items-baseline gap-2">
+                          <span className="line-through text-xs text-[var(--color-tertiary)]">
+                            {formatPrice(breakdown.makingCharge)}
+                          </span>
+                          <span className="font-semibold text-[var(--color-quaternary)]">
+                            {formatPrice(offerBreakdown.makingCharge)}
+                          </span>
+                        </span>
+                      ) : (
+                        formatPrice(breakdown.makingCharge)
+                      )}
                     </span>
                   </div>
                 </>
@@ -395,15 +442,43 @@ export default function ProductDetailPage() {
               <div className="flex justify-between">
                 <span className="text-[var(--color-tertiary)]">GST ({product.gst_percent ?? 5}%)</span>
                 <span className="font-medium">
-                  {product.gst_percent != null
-                    ? formatPrice(product.price - product.price / (1 + product.gst_percent / 100))
-                    : "—"}
+                  {onSale && offerBreakdown ? (
+                    <span className="flex items-baseline gap-2">
+                      <span className="line-through text-xs text-[var(--color-tertiary)]">
+                        {formatPrice(breakdown.gst)}
+                      </span>
+                      <span className="font-semibold text-[var(--color-quaternary)]">
+                        {formatPrice(offerBreakdown.gst)}
+                      </span>
+                    </span>
+                  ) : (
+                    formatPrice(breakdown.gst)
+                  )}
                 </span>
               </div>
               <div className="flex justify-between pt-2 border-t border-[var(--color-tertiary-soft)]">
                 <span className="text-[var(--color-tertiary)] font-semibold">Final Price</span>
-                <span className="font-semibold">{formatPrice(product.price)}</span>
+                <span className="font-semibold">
+                  {onSale ? (
+                    <span className="flex items-baseline gap-2">
+                      <span className="line-through text-xs text-[var(--color-tertiary)]">
+                        {formatPrice(product.price)}
+                      </span>
+                      <span className="text-base text-[var(--color-quaternary)]">
+                        {formatPrice(discounted!)}
+                      </span>
+                    </span>
+                  ) : (
+                    formatPrice(product.price)
+                  )}
+                </span>
               </div>
+              {onSale && (
+                <div className="flex justify-between pt-1 text-xs text-[var(--color-success)] font-medium">
+                  <span>Total Savings</span>
+                  <span>Save {formatPrice(product.price - discounted!)}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

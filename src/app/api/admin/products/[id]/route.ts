@@ -227,8 +227,9 @@ export async function PATCH(
   if (!currentProduct) return notFound();
   
   // Always recalculate price if product has required gold pricing fields
-  const materialType = (patch.material_type ?? currentProduct.material_type) as "gold" | "silver" | null;
   const purity = (patch.purity_carats ?? currentProduct.purity_carats) as 24 | 22 | 18 | 14 | 9 | null;
+  const rawMat = String((patch.material_type ?? currentProduct.material_type) || (purity ? 'gold' : 'gold')).toLowerCase();
+  const effectiveMaterialType = (rawMat === 'silver' ? 'silver' : 'gold') as "gold" | "silver";
   const weight = patch.weight_grams ?? currentProduct.weight_grams;
   const makingType = (patch.making_charge_type ?? currentProduct.making_charge_type) as "percent" | "flat" | null;
   const makingPercent = patch.making_charge_percent ?? currentProduct.making_charge_percent;
@@ -243,7 +244,7 @@ export async function PATCH(
   let usedMetalPrice: number | null = null;
 
   if (shouldRecalculate) {
-    const priceTable = materialType === 'silver' ? 'silver_prices' : 'gold_prices';
+    const priceTable = effectiveMaterialType === 'silver' ? 'silver_prices' : 'gold_prices';
     const priceResult = await supabase
       .from(priceTable)
       .select("price_per_gram")
@@ -252,11 +253,11 @@ export async function PATCH(
       .maybeSingle();
 
     if (priceResult.error) {
-      console.error(`[API] Failed to fetch ${materialType} price for update:`, priceResult.error);
+      console.error(`[API] Failed to fetch ${effectiveMaterialType} price for update:`, priceResult.error);
       if (priceResult.error.code === '42P01') {
-        return badRequest(`${materialType === 'silver' ? 'Silver' : 'Gold'} prices table does not exist. Please run database migrations.`);
+        return badRequest(`${effectiveMaterialType === 'silver' ? 'Silver' : 'Gold'} prices table does not exist. Please run database migrations.`);
       }
-      return serverError(`Failed to fetch current ${materialType} price from database`);
+      return serverError(`Failed to fetch current ${effectiveMaterialType} price from database`);
     }
 
     usedMetalPrice = priceResult.data?.price_per_gram ?? null;
@@ -282,12 +283,12 @@ export async function PATCH(
     
     patch.price = calculateMetalPrice({
       metalPricePerGram: usedMetalPrice,
-      purityCarats: materialType === 'gold' ? purity : null, // Will handle null for silver
+      purityCarats: effectiveMaterialType === 'gold' ? (purity || 22) : null,
       weightGrams: weight,
       makingCharge: makingCharge!,
       makingChargeType: makingType,
       gstPercent: gstPercent,
-      materialType: materialType || 'gold',
+      materialType: effectiveMaterialType,
     });
     patch.gold_price_used = usedMetalPrice;
     patch.price_auto_calculated = true;

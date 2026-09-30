@@ -69,8 +69,8 @@ export function ProductCard({
             No image
           </div>
         )}
-        {/* Offer badge — show whenever offer is active, regardless of price resolution */}
-        {product.offer?.is_active && (
+        {/* Offer badge — show when offer is active and discount applies */}
+        {product.offer?.is_active && onSale && (
           <div className="absolute top-2 left-2">
             <Badge tone="new">{getDiscountLabel(product.offer)}</Badge>
           </div>

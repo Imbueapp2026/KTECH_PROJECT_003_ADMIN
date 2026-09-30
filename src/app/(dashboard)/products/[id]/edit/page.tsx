@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { ImageUploader } from "@/components/products/ImageUploader";
 import { calculateDirectPrice, calculateMetalPrice, PURITY_OPTIONS, MAKING_CHARGE_TYPES } from "@/lib/pricing";
+import { formatPrice, resolveDiscounted } from "@/lib/utils";
 import type { Product, Category, Offer, Discount, OfferWithDiscounts } from "@/lib/data/types";
 
 type Detail = Product & {
@@ -83,6 +84,9 @@ export default function ProductEditPage({ params }: { params: Promise<{ id: stri
   });
   const [imageUrls, setImageUrls] = useState<string[]>([]);
 
+  const selectedOffer = offers.find(o => o.id === formData.offer_id);
+  const isMakingChargeOffer = selectedOffer?.discounts?.[0]?.discount_type === 'making_charge';
+
   const calculateEstimatedPrice = (): number => {
     if (formData.pricing_mode === "direct" && formData.direct_price && !isNaN(parseFloat(formData.direct_price))) {
       return calculateDirectPrice(parseFloat(formData.direct_price), parseFloat(formData.gst_percent));
@@ -90,31 +94,36 @@ export default function ProductEditPage({ params }: { params: Promise<{ id: stri
     const activePrice = formData.material_type === 'silver' ? silverPrice : goldPrice;
     if (!activePrice || !formData.weight_grams) return 0;
     
-    let currentMakingCharge = parseFloat(formData.making_charge) || 0;
-    let currentMakingChargeType = formData.making_charge_type;
-
-    const selectedOffer = offers.find(o => o.id === formData.offer_id);
-    const offerDiscount = selectedOffer?.discounts?.[0];
-    if (offerDiscount?.discount_type === 'making_charge') {
-      currentMakingCharge = offerDiscount.value || 0;
-      currentMakingChargeType = 'percent';
-    }
-
-    if (!currentMakingCharge) return 0;
+    const makingCharge = parseFloat(formData.making_charge) || 0;
+    if (!makingCharge) return 0;
 
     return calculateMetalPrice({
       metalPricePerGram: activePrice,
       purityCarats: formData.material_type === 'gold' ? formData.purity_carats : null,
       weightGrams: parseFloat(formData.weight_grams),
-      makingCharge: currentMakingCharge,
-      makingChargeType: currentMakingChargeType,
+      makingCharge,
+      makingChargeType: formData.making_charge_type,
       gstPercent: parseFloat(formData.gst_percent),
       materialType: formData.material_type,
     });
   };
 
-  const selectedOffer = offers.find(o => o.id === formData.offer_id);
-  const isMakingChargeOffer = selectedOffer?.discounts?.[0]?.discount_type === 'making_charge';
+  const estimatedRegularPrice = calculateEstimatedPrice();
+  const estimatedOfferPrice = selectedOffer && estimatedRegularPrice > 0 ? resolveDiscounted(
+    estimatedRegularPrice,
+    selectedOffer,
+    {
+      price_auto_calculated: formData.pricing_mode === 'metal',
+      material_type: formData.material_type,
+      purity_carats: formData.material_type === 'gold' ? formData.purity_carats : null,
+      weight_grams: parseFloat(formData.weight_grams) || 0,
+      making_charge_type: formData.making_charge_type,
+      making_charge_percent: formData.making_charge_type === 'percent' ? parseFloat(formData.making_charge) : null,
+      making_charge_flat: formData.making_charge_type === 'flat' ? parseFloat(formData.making_charge) : null,
+      gold_price_used: formData.material_type === 'silver' ? silverPrice : goldPrice,
+      gst_percent: parseFloat(formData.gst_percent),
+    }
+  ) : null;
 
   useEffect(() => {
     async function loadData() {
@@ -506,15 +515,13 @@ export default function ProductEditPage({ params }: { params: Promise<{ id: stri
 
           {formData.pricing_mode === "metal" && <div className="grid grid-cols-2 gap-4 mt-4">
             <div>
-              <label className="text-[11px] uppercase tracking-[0.06em] font-semibold text-[var(--color-ink-soft)] mb-1.5 flex items-center justify-between">
-                <span>Making Charge Type</span>
-                {isMakingChargeOffer && <Badge tone="new">Locked by Offer</Badge>}
+              <label className="text-[11px] uppercase tracking-[0.06em] font-semibold text-[var(--color-ink-soft)] mb-1.5 block">
+                Making Charge Type
               </label>
               <select
-                value={isMakingChargeOffer ? 'percent' : formData.making_charge_type}
+                value={formData.making_charge_type}
                 onChange={(e) => setFormData({ ...formData, making_charge_type: e.target.value as "percent" | "flat" })}
-                disabled={isMakingChargeOffer}
-                className="h-10 w-full px-3 bg-[var(--color-primary)] border border-[var(--color-tertiary-soft)] rounded-[var(--radius-md)] text-sm text-[var(--color-ink)] focus:border-[var(--color-quaternary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-quaternary)]/20 disabled:opacity-60"
+                className="h-10 w-full px-3 bg-[var(--color-primary)] border border-[var(--color-tertiary-soft)] rounded-[var(--radius-md)] text-sm text-[var(--color-ink)] focus:border-[var(--color-quaternary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-quaternary)]/20"
               >
                 {MAKING_CHARGE_TYPES.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -525,24 +532,22 @@ export default function ProductEditPage({ params }: { params: Promise<{ id: stri
             </div>
 
             <div>
-              <label className="text-[11px] uppercase tracking-[0.06em] font-semibold text-[var(--color-ink-soft)] mb-1.5 flex items-center justify-between">
-                <span>Making Charge {isMakingChargeOffer ? '(%)' : formData.making_charge_type === 'percent' ? '(%)' : '(₹)'} <span className="text-[var(--color-error)]">*</span></span>
-                {isMakingChargeOffer && <Badge tone="new">Locked by Offer</Badge>}
+              <label className="text-[11px] uppercase tracking-[0.06em] font-semibold text-[var(--color-ink-soft)] mb-1.5 block">
+                Standard Making Charge {formData.making_charge_type === 'percent' ? '(%)' : '(₹)'} <span className="text-[var(--color-error)]">*</span>
               </label>
               <input
                 type="number"
                 step="0.01"
                 min="0"
-                value={isMakingChargeOffer ? selectedOffer.discounts[0].value : formData.making_charge}
+                value={formData.making_charge}
                 onChange={(e) => setFormData({ ...formData, making_charge: e.target.value })}
-                disabled={isMakingChargeOffer}
-                className="h-10 w-full px-3 bg-[var(--color-primary)] border border-[var(--color-tertiary-soft)] rounded-[var(--radius-md)] text-sm text-[var(--color-ink)] focus:border-[var(--color-quaternary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-quaternary)]/20 disabled:opacity-60"
+                className="h-10 w-full px-3 bg-[var(--color-primary)] border border-[var(--color-tertiary-soft)] rounded-[var(--radius-md)] text-sm text-[var(--color-ink)] focus:border-[var(--color-quaternary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-quaternary)]/20"
                 placeholder={formData.making_charge_type === 'percent' ? '10' : '500'}
                 required={!formData.direct_price}
               />
-              {isMakingChargeOffer && (
+              {isMakingChargeOffer && selectedOffer?.discounts?.[0] && (
                 <p className="text-[10px] text-[var(--color-tertiary)] mt-1">
-                  The active offer has overridden the making charge to {selectedOffer.discounts[0].value}%.
+                  Selected offer &ldquo;{selectedOffer.label}&rdquo; will apply promotional making charge of {selectedOffer.discounts[0].value}% to customers.
                 </p>
               )}
             </div>
@@ -571,15 +576,15 @@ export default function ProductEditPage({ params }: { params: Promise<{ id: stri
                 <div className="space-y-1 text-sm">
                   <p className="flex justify-between text-[var(--color-tertiary)]">
                     <span>Direct Price</span>
-                    <span>₹{parseFloat(formData.direct_price).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span>{formatPrice(parseFloat(formData.direct_price))}</span>
                   </p>
                   <p className="flex justify-between text-[var(--color-tertiary)]">
                     <span>GST ({formData.gst_percent}%)</span>
-                    <span>₹{(calculateEstimatedPrice() - parseFloat(formData.direct_price)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span>{formatPrice(estimatedRegularPrice - parseFloat(formData.direct_price))}</span>
                   </p>
                   <p className="flex justify-between border-t border-[var(--color-tertiary-soft)] pt-1 text-lg font-semibold text-[var(--color-ink)]">
                     <span>Final Price</span>
-                    <span>₹{calculateEstimatedPrice().toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span>{formatPrice(estimatedRegularPrice)}</span>
                   </p>
                 </div>
                 <p className="text-xs text-[var(--color-tertiary)] mt-1">
@@ -590,14 +595,33 @@ export default function ProductEditPage({ params }: { params: Promise<{ id: stri
               <Skeleton className="h-8 w-32" />
             ) : (formData.material_type === 'silver' ? silverPrice : goldPrice) ? (
               <div>
-                <p className="text-[10px] uppercase tracking-[0.08em] font-semibold text-[var(--color-quaternary)] mb-1">
-                  Estimated Price (Auto-Calculated)
-                </p>
-                <p className="text-2xl font-semibold text-[var(--color-ink)]">
-                  ₹{calculateEstimatedPrice().toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] uppercase tracking-[0.08em] font-semibold text-[var(--color-quaternary)] mb-1">
+                    Estimated Price (Auto-Calculated)
+                  </p>
+                  {estimatedOfferPrice != null && (
+                    <Badge tone="new">Offer Discount</Badge>
+                  )}
+                </div>
+                {estimatedOfferPrice != null ? (
+                  <div className="flex items-baseline gap-3 mt-1">
+                    <span className="text-2xl font-semibold text-[var(--color-quaternary)]">
+                      {formatPrice(estimatedOfferPrice)}
+                    </span>
+                    <span className="text-sm text-[var(--color-tertiary)] line-through">
+                      {formatPrice(estimatedRegularPrice)}
+                    </span>
+                    <span className="text-xs font-semibold text-[var(--color-success)]">
+                      Save {formatPrice(estimatedRegularPrice - estimatedOfferPrice)}
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-2xl font-semibold text-[var(--color-ink)]">
+                    {formatPrice(estimatedRegularPrice)}
+                  </p>
+                )}
                 <p className="text-xs text-[var(--color-tertiary)] mt-1">
-                  Based on current {formData.material_type} price: ₹{(formData.material_type === 'silver' ? silverPrice : goldPrice)?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/g
+                  Based on current {formData.material_type} price: ₹{Math.round(formData.material_type === 'silver' ? (silverPrice || 0) : (goldPrice || 0)).toLocaleString('en-IN')}/g
                 </p>
               </div>
             ) : (
