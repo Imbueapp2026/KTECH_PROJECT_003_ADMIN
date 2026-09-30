@@ -1,5 +1,5 @@
 import type { Discount, Offer } from "./data/types";
-import { calculateMetalPrice } from "./pricing";
+import { calculateMetalPrice, calculatePriceBreakdown } from "./pricing";
 
 export interface OfferPriceProduct {
   price: number;
@@ -18,27 +18,45 @@ export interface OfferPriceRates {
   metalPricePerGram?: number | null;
 }
 
-export type OfferPriceUpdate = { id: string; offer_price: number | null };
+export type OfferDiscountType = "flat" | "percentage" | "making_charge" | "mixed";
+export type OfferPriceResult = {
+  offerPrice: number | null;
+  discountAmount: number | null;
+  discountType: OfferDiscountType | null;
+};
+export type OfferPriceUpdate = {
+  id: string;
+  offer_price: number | null;
+  offer_discount_amount: number | null;
+  offer_discount_type: OfferDiscountType | null;
+};
+
+const NO_OFFER_PRICE: OfferPriceResult = {
+  offerPrice: null,
+  discountAmount: null,
+  discountType: null,
+};
 
 export function computeOfferPrice(
   product: OfferPriceProduct,
   offer: Pick<Offer, "is_active" | "start_date" | "end_date"> | null,
   discounts: Discount[] | Discount | null,
   rates: OfferPriceRates,
-): number | null {
-  if (!offer || !offer.is_active || !product.price || product.price <= 0) return null;
+): OfferPriceResult {
+  if (!offer || !offer.is_active || !product.price || product.price <= 0) return NO_OFFER_PRICE;
 
   if (offer.start_date) {
     const start = new Date(offer.start_date).getTime();
-    if (!Number.isNaN(start) && Date.now() < start) return null;
+    if (!Number.isNaN(start) && Date.now() < start) return NO_OFFER_PRICE;
   }
   if (offer.end_date) {
     const endMs = new Date(offer.end_date).getTime();
-    if (!Number.isNaN(endMs) && Date.now() >= endMs) return null;
+    if (!Number.isNaN(endMs) && Date.now() >= endMs) return NO_OFFER_PRICE;
   }
 
-  const discount = Array.isArray(discounts) ? discounts[0] : discounts;
-  if (!discount || discount.value == null || discount.value <= 0) return null;
+  const discountList = Array.isArray(discounts) ? discounts : discounts ? [discounts] : [];
+  const discount = discountList[0];
+  if (!discount || discount.value == null || discount.value <= 0) return NO_OFFER_PRICE;
 
   let discounted: number | null = null;
   if (discount.discount_type === "making_charge") {
@@ -89,10 +107,46 @@ export function computeOfferPrice(
     discounted = Math.round(product.price - discount.value);
   }
 
-  if (discounted != null && discounted < product.price && discounted >= 0) {
-    return Math.max(0, discounted);
+  if (discounted == null || discounted >= product.price || discounted < 0) return NO_OFFER_PRICE;
+
+  const offerPrice = Math.max(0, Math.round(discounted));
+  const discountType: OfferDiscountType = discountList.length > 1
+    ? "mixed"
+    : (discount.discount_type as string) === "percent" ? "percentage" : discount.discount_type;
+  let discountAmount = Math.max(0, Math.round(product.price - offerPrice));
+
+  if (discountList.length === 1 && discount.discount_type === "making_charge") {
+    const rawMaterial = (product.material_type || "gold").toLowerCase();
+    const materialType = rawMaterial === "silver" ? "silver" : rawMaterial === "platinum" ? "platinum" : "gold";
+    const metalPrice = product.gold_price_used ?? rates.metalPricePerGram;
+    const originalBreakdown = calculatePriceBreakdown({
+      price: product.price,
+      materialType,
+      purityCarats: product.purity_carats,
+      weightGrams: product.weight_grams,
+      makingChargeType: product.making_charge_type,
+      makingChargePercent: product.making_charge_percent,
+      makingChargeFlat: product.making_charge_flat,
+      goldPriceUsed: metalPrice,
+      gstPercent: product.gst_percent,
+      priceAutoCalculated: product.price_auto_calculated,
+    });
+    const offerBreakdown = calculatePriceBreakdown({
+      price: offerPrice,
+      materialType,
+      purityCarats: product.purity_carats,
+      weightGrams: product.weight_grams,
+      makingChargeType: "percent",
+      makingChargePercent: discount.value,
+      makingChargeFlat: null,
+      goldPriceUsed: metalPrice,
+      gstPercent: product.gst_percent,
+      priceAutoCalculated: product.price_auto_calculated,
+    });
+    discountAmount = Math.max(0, originalBreakdown.makingCharge - offerBreakdown.makingCharge);
   }
-  return null;
+
+  return { offerPrice, discountAmount, discountType };
 }
 
 export function computeOfferPriceUpdates(
@@ -100,10 +154,15 @@ export function computeOfferPriceUpdates(
   offer: Pick<Offer, "is_active" | "start_date" | "end_date"> | null,
   discounts: Discount[] | Discount | null,
 ): OfferPriceUpdate[] {
-  return products.map((product) => ({
-    id: product.id,
-    offer_price: computeOfferPrice(product, offer, discounts, {
+  return products.map((product) => {
+    const result = computeOfferPrice(product, offer, discounts, {
       metalPricePerGram: product.gold_price_used,
-    }),
-  }));
+    });
+    return {
+      id: product.id,
+      offer_price: result.offerPrice,
+      offer_discount_amount: result.discountAmount,
+      offer_discount_type: result.discountType,
+    };
+  });
 }

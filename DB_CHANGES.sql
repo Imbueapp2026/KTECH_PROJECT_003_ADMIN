@@ -2,6 +2,32 @@ alter table public.products
   add column if not exists offer_price numeric null
   check (offer_price is null or offer_price >= 0);
 
+alter table public.products
+  add column if not exists offer_discount_amount numeric null,
+  add column if not exists offer_discount_type text null;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.products'::regclass
+      and conname = 'products_offer_values_together'
+  ) then
+    alter table public.products
+      add constraint products_offer_values_together
+      check (
+        (offer_price is null and offer_discount_amount is null and offer_discount_type is null)
+        or
+        (offer_price is not null and offer_discount_amount is not null and offer_discount_type is not null)
+      ) not valid;
+  end if;
+end;
+$$;
+
+-- After running scripts/backfill-offer-price.ts --apply, validate existing rows:
+-- alter table public.products validate constraint products_offer_values_together;
+
 --Enable pg_cron separately if desired; this schedule is intentionally disabled.
 --    select cron.schedule(
   -- 'clear-inactive-or-ended-offer-prices',
@@ -84,11 +110,15 @@ begin
   update public.products as product
   set offer_id = item.offer_id,
       offer_price = item.offer_price,
+      offer_discount_amount = item.offer_discount_amount,
+      offer_discount_type = item.offer_discount_type,
       updated_at = now()
   from jsonb_to_recordset(p_items) as item(
     id uuid,
     offer_id uuid,
-    offer_price numeric
+    offer_price numeric,
+    offer_discount_amount numeric,
+    offer_discount_type text
   )
   where product.id = item.id;
 

@@ -4,6 +4,8 @@ import { applyOfferPriceItems, MAX_OFFER_ASSIGNMENT_ITEMS } from "./offer-assign
 import {
   computeOfferPrice,
   computeOfferPriceUpdates,
+  type OfferPriceUpdate,
+  type OfferPriceResult,
   type OfferPriceProduct,
 } from "./offer-price";
 
@@ -17,15 +19,17 @@ export async function computeProductOfferPrice(
   supabase: SupabaseClient,
   product: OfferPriceProduct,
   offerId: string | null,
-): Promise<{ data: number | null; error: unknown | null }> {
-  if (!offerId) return { data: null, error: null };
+): Promise<{ data: OfferPriceResult; error: unknown | null }> {
+  if (!offerId) {
+    return { data: computeOfferPrice(product, null, null, {}), error: null };
+  }
   const { data, error } = await supabase
     .from("offers")
     .select("is_active, start_date, end_date, discounts(id, offer_id, discount_type, value)")
     .eq("id", offerId)
     .maybeSingle();
-  if (error) return { data: null, error };
-  if (!data) return { data: null, error: new Error("Offer not found") };
+  if (error) return { data: computeOfferPrice(product, null, null, {}), error };
+  if (!data) return { data: computeOfferPrice(product, null, null, {}), error: new Error("Offer not found") };
   const context = data as OfferContext;
   return {
     data: computeOfferPrice(product, context, context.discounts, {
@@ -48,7 +52,7 @@ export async function recomputeOfferPrices(
   if (!offer) return { updated: 0, error: new Error("Offer not found") };
 
   const context = offer as OfferContext;
-  const updates: Array<{ id: string; offer_id: string; offer_price: number | null }> = [];
+  const updates: Array<OfferPriceUpdate & { offer_id: string }> = [];
   for (let offset = 0; ; offset += 500) {
     const { data: products, error } = await supabase
       .from("products")
@@ -109,16 +113,19 @@ export async function recomputeAllOfferPrices(
     offersById.set(offer.id, offer);
   }
 
-  const updates: Array<{ id: string; offer_id: string; offer_price: number | null }> = [];
+  const updates: Array<OfferPriceUpdate & { offer_id: string }> = [];
   for (const product of products) {
     const offer = offersById.get(product.offer_id);
     if (!offer) return { updated: 0, error: new Error(`Offer ${product.offer_id} not found`) };
+    const result = computeOfferPrice(product, offer, offer.discounts, {
+      metalPricePerGram: product.gold_price_used,
+    });
     updates.push({
       id: product.id,
       offer_id: product.offer_id,
-      offer_price: computeOfferPrice(product, offer, offer.discounts, {
-        metalPricePerGram: product.gold_price_used,
-      }),
+      offer_price: result.offerPrice,
+      offer_discount_amount: result.discountAmount,
+      offer_discount_type: result.discountType,
     });
   }
   try {
