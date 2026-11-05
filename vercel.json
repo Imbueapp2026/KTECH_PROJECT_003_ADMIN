@@ -3,6 +3,10 @@
   "outputDirectory": ".next",
   "crons": [
     {
+      "path": "/api/database/keep-alive",
+      "schedule": "0 * * * *"
+    },
+    {
       "path": "/api/admin/offers/recompute-prices",
       "schedule": "0 0 * * *"
     }
