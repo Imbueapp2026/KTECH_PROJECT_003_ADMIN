@@ -18,6 +18,7 @@ import { checkRequestSize, RequestSizeError } from "@/lib/request-limits";
 import { handlePreflight, withCors } from "@/lib/cors";
 import { NextRequest, NextResponse } from "next/server";
 import { asUuid } from "@/lib/http";
+import { compressImageUpload, PRODUCT_IMAGE_CACHE_CONTROL } from "@/lib/image-compression";
 
 const BUCKET = "product-images";
 const MAX_FILES = 4;
@@ -77,14 +78,21 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    const ext = file.type.split("/")[1].replace("jpeg", "jpg");
-    const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
+    let compressed: Awaited<ReturnType<typeof compressImageUpload>>;
+    try {
+      compressed = await compressImageUpload(await file.arrayBuffer(), file.name);
+    } catch (error) {
+      errors.push({ file: file.name, error: error instanceof Error ? error.message : "Image compression failed" });
+      continue;
+    }
+
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${compressed.extension}`;
 
     const { error: uploadError } = await supabase.storage
       .from(BUCKET)
-      .upload(path, buffer, {
-        contentType: file.type,
+      .upload(path, compressed.buffer, {
+        contentType: compressed.contentType,
+        cacheControl: PRODUCT_IMAGE_CACHE_CONTROL,
         upsert: false,
       });
 

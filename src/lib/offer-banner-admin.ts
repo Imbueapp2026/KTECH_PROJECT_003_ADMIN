@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { compressImageUpload, PRODUCT_IMAGE_CACHE_CONTROL } from "./image-compression";
 
 const BUCKET = "product-images";
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -92,11 +93,14 @@ export async function saveOfferBanner(
   let uploadedPath: string | null = null;
 
   if (input.file) {
-    const path = `offer-banners/${input.offerId}/${Date.now()}-${randomUUID()}-${safeFilename(input.file.name, input.file.type)}`;
+    const compressed = await compressImageUpload(await input.file.arrayBuffer(), input.file.name);
+    const safeName = safeFilename(input.file.name, input.file.type).replace(/\.[^.]+$/, "");
+    const path = `offer-banners/${input.offerId}/${Date.now()}-${randomUUID()}-${safeName}.${compressed.extension}`;
     const { data: uploaded, error: uploadError } = await supabase.storage
       .from(BUCKET)
-      .upload(path, Buffer.from(await input.file.arrayBuffer()), {
-        contentType: input.file.type,
+      .upload(path, compressed.buffer, {
+        contentType: compressed.contentType,
+        cacheControl: PRODUCT_IMAGE_CACHE_CONTROL,
         upsert: false,
       });
     if (uploadError) throw uploadError;

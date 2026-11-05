@@ -6,6 +6,7 @@
 import { getServiceClient } from "@/lib/supabase";
 import { badRequest, serverError, unauthorized } from "@/lib/http";
 import { requireAdmin } from "@/lib/firebase-admin";
+import { compressImageUpload, PRODUCT_IMAGE_CACHE_CONTROL } from "@/lib/image-compression";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -29,15 +30,16 @@ export async function POST(req: Request) {
     }
 
     const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+    const compressed = await compressImageUpload(bytes, file.name);
 
     const supabase = getServiceClient();
-    const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+    const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_").replace(/\.[^.]+$/, "")}.${compressed.extension}`;
 
     const { data, error } = await supabase.storage
       .from("product-images")
-      .upload(fileName, buffer, {
-        contentType: file.type,
+      .upload(fileName, compressed.buffer, {
+        contentType: compressed.contentType,
+        cacheControl: PRODUCT_IMAGE_CACHE_CONTROL,
         upsert: false,
       });
 
